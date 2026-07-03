@@ -1,0 +1,33 @@
+services:
+  redis:
+    command:
+      - redis-server
+      - /usr/local/etc/redis/redis.conf
+      - --maxmemory
+      - 256mb
+    mem_limit: 384m
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+      - ./config/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - ./secrets/development:/run/redis
+
+  restic:
+    volumes:
+      - redis-data:/data:ro
+      - ./secrets/development:/run/secrets:ro
+      - local-restic:/local-backup
+
+volumes:
+  redis-data:
+    name: self-hosted-redis-dev-data
+  restore-staging:
+    name: self-hosted-redis-dev-restore-staging
+  local-restic:
+    name: self-hosted-redis-dev-local-restic
+
+networks:
+  shared-services:
+    name: self-hosted-redis-dev
+    external: false

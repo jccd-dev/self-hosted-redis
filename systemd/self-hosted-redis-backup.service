@@ -1,0 +1,23 @@
+[Unit]
+Description=Back up self-hosted Redis to Cloudflare R2
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/self-hosted-redis
+Environment=REDIS_ENV=production
+ExecStart=/opt/self-hosted-redis/bin/backup
+User=root
+Group=root
+UMask=0077
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadOnlyPaths=/opt/self-hosted-redis
+
+[Install]
+WantedBy=multi-user.target

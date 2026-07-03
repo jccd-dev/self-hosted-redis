@@ -1,0 +1,25 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+. "$ROOT/lib/common.sh"
+
+validate_environment
+require_secret users.acl
+require_secret admin-password
+require_secret health-password
+
+compose config >/dev/null
+
+if [ "$REDIS_ENV" = production ]; then
+    docker network inspect shared-services >/dev/null 2>&1 ||
+        die "Docker network shared-services does not exist"
+fi
+
+compose ps --status running --services | grep -Fxq redis || die "Redis container is not running"
+[ "$(redis_admin PING)" = PONG ] || die "authenticated Redis ping failed"
+
+redis_admin INFO memory | grep -Eq '^maxmemory:2147483648' || die "Redis maxmemory is not 2 GB"
+redis_admin INFO persistence | grep -Eq '^aof_enabled:1' || die "AOF persistence is not enabled"
+
+printf '%s Redis checks passed.\n' "$REDIS_ENV"

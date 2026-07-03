@@ -1,0 +1,66 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+. "$ROOT/lib/common.sh"
+
+usage() {
+    die "usage: ./bin/project-user add|rotate|remove <project-slug>"
+}
+
+[ "$#" -eq 2 ] || usage
+action=$1
+slug=$2
+validate_environment
+validate_slug "$slug"
+
+user_exists() {
+    redis_admin ACL USERS | grep -Fxq "$slug"
+}
+
+print_connection() {
+    password=$1
+    if [ "$REDIS_ENV" = development ]; then
+        host=${REDIS_OUTPUT_HOST:-127.0.0.1}
+    else
+        host=${REDIS_OUTPUT_HOST:-redis}
+    fi
+
+    printf 'REDIS_HOST=%s\n' "$host"
+    printf 'REDIS_PORT=6379\n'
+    printf 'REDIS_USERNAME=%s\n' "$slug"
+    printf 'REDIS_PASSWORD=%s\n' "$password"
+    printf 'REDIS_DATABASE=0\n'
+    printf 'REDIS_PREFIX=%s:\n' "$slug"
+    printf 'REDIS_URL=redis://%s:%s@%s:6379/0\n' "$slug" "$password" "$host"
+}
+
+case "$action" in
+    add)
+        if user_exists; then
+            die "Redis user $slug already exists; use rotate to replace its password"
+        fi
+        password=$(generate_password)
+        hash=$(password_hash "$password")
+        redis_admin ACL SETUSER "$slug" reset on "#$hash" \
+            resetkeys "~$slug:*" resetchannels "&$slug:*" \
+            '+@all' '-@admin' '-@dangerous' >/dev/null
+        redis_admin ACL SAVE >/dev/null
+        print_connection "$password"
+        ;;
+    rotate)
+        user_exists || die "Redis user $slug does not exist"
+        password=$(generate_password)
+        hash=$(password_hash "$password")
+        redis_admin ACL SETUSER "$slug" resetpass "#$hash" >/dev/null
+        redis_admin ACL SAVE >/dev/null
+        print_connection "$password"
+        ;;
+    remove)
+        user_exists || die "Redis user $slug does not exist"
+        redis_admin ACL DELUSER "$slug" >/dev/null
+        redis_admin ACL SAVE >/dev/null
+        printf 'Removed Redis user %s.\n' "$slug"
+        ;;
+    *) usage ;;
+esac

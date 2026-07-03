@@ -1,0 +1,47 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+. "$ROOT/lib/common.sh"
+
+[ "$#" -eq 2 ] || die "usage: ./bin/restore <snapshot-id|latest> --confirm"
+snapshot=$1
+[ "$2" = --confirm ] || die "restore requires --confirm"
+printf '%s\n' "$snapshot" | grep -Eq '^(latest|[A-Za-z0-9_-]+)$' || die "invalid Restic snapshot ID"
+
+validate_environment
+require_r2_config
+
+if compose ps --status running --services | grep -Fxq redis; then
+    die "Redis must be stopped before restore; run docker compose stop redis"
+fi
+
+compose --profile tools run --rm --no-deps redis-tools -c \
+    'find /restore -mindepth 1 -maxdepth 1 -exec rm -rf {} +'
+restic_run restore "$snapshot" --target /restore --include /data/dump.rdb
+compose --profile tools run --rm --no-deps redis-tools -c \
+    'redis-check-rdb /restore/data/dump.rdb'
+
+timestamp=$(date -u +%Y%m%dT%H%M%SZ)
+compose --profile tools run --rm --no-deps redis-tools -c '
+    set -eu
+    safety="/restore/safety-$1"
+    mkdir -p "$safety"
+    cp -a /data/. "$safety/"
+    find /data -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+    cp /restore/data/dump.rdb /data/dump.rdb
+    chown -R redis:redis /data
+' sh "$timestamp"
+
+compose up -d redis
+attempt=0
+while [ "$attempt" -lt 30 ]; do
+    if [ "$(redis_admin PING 2>/dev/null || true)" = PONG ]; then
+        printf 'Restored snapshot %s; previous data is preserved in restore staging safety-%s.\n' "$snapshot" "$timestamp"
+        exit 0
+    fi
+    sleep 1
+    attempt=$((attempt + 1))
+done
+
+die "restored Redis did not become healthy; previous data remains in restore staging safety-$timestamp"

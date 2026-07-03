@@ -1,0 +1,48 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+. "$ROOT/lib/common.sh"
+
+if [ "$#" -gt 1 ]; then
+    die "usage: ./bin/init [development|production]"
+fi
+
+REDIS_ENV=${1:-development}
+validate_environment
+
+dir=$(secrets_dir)
+acl_file="$dir/users.acl"
+
+[ ! -e "$acl_file" ] || die "$acl_file already exists; initialization will not overwrite credentials"
+
+umask 077
+mkdir -p "$dir"
+chmod 700 "$dir"
+
+admin_password=$(generate_password)
+health_password=$(generate_password)
+backup_password=$(generate_password)
+restic_password=$(generate_password)
+
+printf '%s\n' "$admin_password" >"$dir/admin-password"
+printf '%s\n' "$health_password" >"$dir/health-password"
+printf '%s\n' "$backup_password" >"$dir/backup-password"
+printf '%s\n' "$restic_password" >"$dir/restic-password"
+
+admin_hash=$(password_hash "$admin_password")
+health_hash=$(password_hash "$health_password")
+backup_hash=$(password_hash "$backup_password")
+
+tmp_acl="$dir/users.acl.tmp"
+{
+    printf 'user default off\n'
+    printf 'user admin on #%s ~* &* +@all\n' "$admin_hash"
+    printf 'user health on #%s -@all +ping\n' "$health_hash"
+    printf 'user backup on #%s -@all +ping +info +bgsave +lastsave\n' "$backup_hash"
+} >"$tmp_acl"
+chmod 600 "$tmp_acl" "$dir"/*-password
+mv "$tmp_acl" "$acl_file"
+
+printf 'Initialized %s secrets in %s.\n' "$REDIS_ENV" "$dir"
+printf 'Credentials are stored locally and will not be printed.\n'

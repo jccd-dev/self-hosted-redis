@@ -1,0 +1,33 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+. "$ROOT/lib/common.sh"
+
+validate_environment
+require_r2_config
+
+response=$(redis_backup BGSAVE)
+printf '%s\n' "$response" | grep -Eq '^Background saving (started|scheduled)$' ||
+    die "Redis rejected BGSAVE: $response"
+
+timeout=${BACKUP_TIMEOUT_SECONDS:-300}
+elapsed=0
+while :; do
+    persistence=$(redis_backup INFO persistence | tr -d '\r')
+    in_progress=$(printf '%s\n' "$persistence" | awk -F: '$1 == "rdb_bgsave_in_progress" {print $2}')
+    status=$(printf '%s\n' "$persistence" | awk -F: '$1 == "rdb_last_bgsave_status" {print $2}')
+    if [ "$in_progress" = 0 ]; then
+        [ "$status" = ok ] || die "Redis BGSAVE completed with status: ${status:-unknown}"
+        break
+    fi
+    [ "$elapsed" -lt "$timeout" ] || die "timed out waiting for Redis BGSAVE"
+    sleep 1
+    elapsed=$((elapsed + 1))
+done
+
+restic_run backup /data/dump.rdb --host self-hosted-redis --tag redis-production
+restic_run forget --host self-hosted-redis --tag redis-production \
+    --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune
+
+printf 'Redis backup and retention completed.\n'

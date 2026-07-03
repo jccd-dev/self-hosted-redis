@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the self-hosted Redis backup daily
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+Unit=self-hosted-redis-backup.service
+
+[Install]
+WantedBy=timers.target
