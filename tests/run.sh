@@ -7,5 +7,7 @@ ROOT=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 "$ROOT/tests/operations.sh"
 "$ROOT/tests/backups.sh"
 "$ROOT/tests/docs.sh"
+"$ROOT/tests/releases.sh"
 "$ROOT/tests/integration.sh"
+"$ROOT/tests/release-integration.sh"
 "$ROOT/tests/r2-integration.sh"

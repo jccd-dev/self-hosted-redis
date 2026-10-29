@@ -26,6 +26,8 @@ compose() {
     set -- --env-file "$config_file" "$@"
     if [ "$REDIS_ENV" = development ]; then
         docker compose -f "$ROOT/compose.yaml" -f "$ROOT/compose.dev.yaml" "$@"
+    elif [ -f "$ROOT/.host-access" ]; then
+        docker compose -f "$ROOT/compose.yaml" -f "$ROOT/compose.host-access.yaml" "$@"
     else
         docker compose -f "$ROOT/compose.yaml" "$@"
     fi

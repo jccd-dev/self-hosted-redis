@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+ROOT=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
+[ "$#" -le 1 ] || { printf 'Usage: bin/update [vX.Y.Z|--rollback]\n' >&2; exit 1; }
+# Run a private copy: replacing this release must not rewrite the running script.
+runner=$(mktemp)
+trap 'rm -f "$runner"' EXIT
+trap 'exit 1' HUP INT TERM
+cp "$ROOT/install.sh" "$runner"
+if [ "${1:-}" = --rollback ]; then
+    sh "$runner" --update "$ROOT" --rollback
+else
+    sh "$runner" --update "$ROOT" --version "${1:-latest}"
+fi

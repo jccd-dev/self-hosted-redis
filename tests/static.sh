@@ -61,10 +61,10 @@ fi
 docker compose -f compose.yaml -f compose.host-access.yaml config | grep -q 'host_ip: 127.0.0.1' ||
     fail 'host-access override must bind Redis to loopback only'
 
-for script in bin/* lib/*.sh tests/*.sh; do
+for script in install.sh bin/* lib/*.sh tests/*.sh; do
     sh -n "$script"
 done
-shellcheck -x bin/* lib/*.sh tests/*.sh
+shellcheck -x install.sh bin/* lib/*.sh tests/*.sh
 
 docker compose -f compose.yaml config >/dev/null
 docker compose -f compose.yaml -f compose.dev.yaml config >/dev/null

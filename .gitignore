@@ -2,3 +2,6 @@
 .env
 secrets/*
 !secrets/.gitkeep
+.host-access
+.previous.tar.gz*
+.update-lock/

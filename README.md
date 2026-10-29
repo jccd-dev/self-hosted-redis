@@ -58,7 +58,9 @@ Production host access remains opt-in: include `-f compose.yaml -f compose.host-
 
 ## Production deployment
 
-Install the repository at `/opt/self-hosted-redis`, then initialize the private Docker network and credentials:
+For release installation, updates, and rollback, see [the release guide](docs/releases.md). Public release assets are pending Phase 5.
+
+For the manual Compose path, install the repository at `/opt/self-hosted-redis`, then initialize the private Docker network and credentials:
 
 ```sh
 cd /opt/self-hosted-redis
@@ -159,7 +161,7 @@ Perform this drill after initial deployment and periodically thereafter. A backu
 - Inspect memory: `docker compose exec redis redis-cli --user admin --askpass INFO memory`
 - Inspect persistence: `docker compose exec redis redis-cli --user admin --askpass INFO persistence`
 - View logs: `docker compose logs --tail=200 redis`
-- Upgrade: update the pinned patch tag, review release notes, run tests, take a backup, pull, and recreate Redis
+- Upgrade release installs: `./bin/update [vX.Y.Z]`; see [updates and rollback](docs/releases.md)
 
 The default `noeviction` policy protects queues, sessions, streams, and other non-disposable data from silent deletion. When the configured dataset limit is reached, writes fail. Alert before `used_memory` approaches the limit and scale or separate workloads rather than changing to an eviction policy blindly.
 
@@ -180,3 +182,5 @@ Install [ShellCheck](https://www.shellcheck.net/) and Docker Compose v2 before r
 ```
 
 Static and unit tests do not need R2. Docker integration tests use a temporary checkout, unique test-scoped containers, networks, volumes, and an ephemeral loopback port. They verify startup without backup configuration and a local backup/restore without cloud credentials. Test credentials, data, and Docker resources are removed afterward. The R2 integration check is opt-in and uses `RESTIC_ENV_FILE` or the production backup configuration (including legacy `r2.env`).
+
+Release lifecycle tests also use a privileged disposable Linux Docker daemon, isolated from host production volumes. See [release verification](docs/releases.md#verification).
