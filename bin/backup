@@ -5,7 +5,7 @@ ROOT=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 . "$ROOT/lib/common.sh"
 
 validate_environment
-require_r2_config
+require_backup_config
 
 response=$(redis_backup BGSAVE)
 printf '%s\n' "$response" | grep -Eq '^Background saving (started|scheduled)$' ||

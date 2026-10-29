@@ -6,19 +6,12 @@ ROOT=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 
 validate_environment
 require_secret restic-password
-file=$(r2_env_file)
+file=$(backup_env_file)
 
-provided=0
-for name in R2_ACCOUNT_ID R2_BUCKET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
-    eval "value=\${$name:-}"
-    [ -z "$value" ] || provided=$((provided + 1))
-done
-
-if [ "$provided" -ne 0 ] && [ "$provided" -ne 4 ]; then
-    die "provide all of R2_ACCOUNT_ID, R2_BUCKET, AWS_ACCESS_KEY_ID, and AWS_SECRET_ACCESS_KEY"
-fi
-
-if [ "$provided" -eq 4 ]; then
+if [ -n "${R2_ACCOUNT_ID:-}${R2_BUCKET:-}" ]; then
+    [ -n "${R2_ACCOUNT_ID:-}" ] && [ -n "${R2_BUCKET:-}" ] &&
+        [ -n "${AWS_ACCESS_KEY_ID:-}" ] && [ -n "${AWS_SECRET_ACCESS_KEY:-}" ] ||
+        die "provide all of R2_ACCOUNT_ID, R2_BUCKET, AWS_ACCESS_KEY_ID, and AWS_SECRET_ACCESS_KEY"
     printf '%s\n' "$R2_ACCOUNT_ID" | grep -Eq '^[0-9a-fA-F]{32}$' || die "R2_ACCOUNT_ID must be a 32-character hexadecimal account ID"
     printf '%s\n' "$R2_BUCKET" | grep -Eq '^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$' || die "R2_BUCKET must be a valid 3-63 character bucket name"
     printf '%s\n' "$AWS_ACCESS_KEY_ID$AWS_SECRET_ACCESS_KEY" | grep -q '[[:space:]]' && die "R2 credentials must not contain whitespace"
@@ -30,17 +23,17 @@ if [ "$provided" -eq 4 ]; then
         printf 'R2_BUCKET=%s\n' "$R2_BUCKET"
         printf 'AWS_ACCESS_KEY_ID=%s\n' "$AWS_ACCESS_KEY_ID"
         printf 'AWS_SECRET_ACCESS_KEY=%s\n' "$AWS_SECRET_ACCESS_KEY"
+        printf 'AWS_DEFAULT_REGION=auto\n'
         printf 'RESTIC_REPOSITORY=s3:https://%s.r2.cloudflarestorage.com/%s\n' "$R2_ACCOUNT_ID" "$R2_BUCKET"
     } >"$tmp"
     chmod 600 "$tmp"
     mv "$tmp" "$file"
-elif [ ! -f "$file" ]; then
-    die "provide R2 credentials on the first run; see r2.env.example"
 fi
 
+require_backup_config
 if restic_run snapshots >/dev/null 2>&1; then
     printf 'Existing Restic repository is accessible.\n'
 else
     restic_run init
-    printf 'Initialized encrypted Restic repository in Cloudflare R2.\n'
+    printf 'Initialized encrypted Restic repository.\n'
 fi

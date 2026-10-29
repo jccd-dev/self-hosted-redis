@@ -10,7 +10,7 @@ snapshot=$1
 printf '%s\n' "$snapshot" | grep -Eq '^(latest|[A-Za-z0-9_-]+)$' || die "invalid Restic snapshot ID"
 
 validate_environment
-require_r2_config
+require_backup_config
 require_secret admin-password
 
 if compose ps --status running --services | grep -Fxq redis; then

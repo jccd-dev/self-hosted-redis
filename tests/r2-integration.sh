@@ -9,22 +9,18 @@ cd "$ROOT"
     exit 0
 }
 
-[ -f secrets/production/r2.env ] || {
-    printf 'Missing secrets/production/r2.env; run ./bin/backup-init first.\n' >&2
-    exit 1
-}
+. "$ROOT/lib/common.sh"
+validate_environment
+require_backup_config
 
 docker compose --profile tools run --rm --no-deps redis-tools -c \
     'mkdir -p /restore/r2-smoke && printf verified > /restore/r2-smoke/payload'
-docker compose --env-file secrets/production/r2.env --profile tools run --rm --no-deps restic \
-    backup /restore/r2-smoke/payload --host self-hosted-redis-r2-check --tag r2-integration
-docker compose --env-file secrets/production/r2.env --profile tools run --rm --no-deps restic \
-    snapshots --host self-hosted-redis-r2-check --tag r2-integration
-docker compose --env-file secrets/production/r2.env --profile tools run --rm --no-deps restic check
+restic_run backup /restore/r2-smoke/payload --host self-hosted-redis-r2-check --tag r2-integration
+restic_run snapshots --host self-hosted-redis-r2-check --tag r2-integration
+restic_run check
 docker compose --profile tools run --rm --no-deps redis-tools -c \
     'find /restore/r2-smoke-restored -mindepth 1 -delete 2>/dev/null || true; mkdir -p /restore/r2-smoke-restored'
-docker compose --env-file secrets/production/r2.env --profile tools run --rm --no-deps restic \
-    restore latest --host self-hosted-redis-r2-check --tag r2-integration --target /restore/r2-smoke-restored
+restic_run restore latest --host self-hosted-redis-r2-check --tag r2-integration --target /restore/r2-smoke-restored
 docker compose --profile tools run --rm --no-deps redis-tools -c \
     'test "$(cat /restore/r2-smoke-restored/restore/r2-smoke/payload)" = verified'
 

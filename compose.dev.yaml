@@ -11,7 +11,6 @@ services:
     volumes:
       - redis-data:/data:ro
       - ./secrets/development:/run/secrets:ro
-      - local-restic:/local-backup
 
 volumes:
   redis-data:

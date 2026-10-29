@@ -67,18 +67,25 @@ redis_backup() {
         sh "$@"
 }
 
-r2_env_file() {
-    printf '%s\n' "${RESTIC_ENV_FILE:-$(secrets_dir)/r2.env}"
+backup_env_file() {
+    file=${RESTIC_ENV_FILE:-$(secrets_dir)/backup.env}
+    if [ -z "${RESTIC_ENV_FILE:-}" ] && [ ! -f "$file" ] && [ -f "$(secrets_dir)/r2.env" ]; then
+        file="$(secrets_dir)/r2.env"
+    fi
+    case "$file" in
+        /*) printf '%s\n' "$file" ;;
+        *) printf '%s/%s\n' "$ROOT" "$file" ;;
+    esac
 }
 
-require_r2_config() {
-    file=$(r2_env_file)
-    [ -f "$file" ] || die "missing $file; run ./bin/backup-init first"
+require_backup_config() {
+    file=$(backup_env_file)
+    [ -f "$file" ] || die "backups are not configured; create $file from backup.env.example, then run ./bin/backup-init"
     require_secret restic-password
 }
 
 restic_run() {
-    require_r2_config
-    env_file=$(r2_env_file)
-    compose --env-file "$env_file" --profile tools run --rm --no-deps restic "$@"
+    require_backup_config
+    env_file=$(backup_env_file)
+    RESTIC_ENV_FILE="$env_file" compose --profile tools run --rm --no-deps restic "$@"
 }

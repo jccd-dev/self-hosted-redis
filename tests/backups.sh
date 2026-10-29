@@ -39,6 +39,19 @@ chmod +x "$TMP/fake-bin/docker"
 
 REDIS_SECRETS_ROOT="$TMP/secrets" "$ROOT/bin/init" production >/dev/null
 
+if PATH="$TMP/fake-bin:$PATH" FAKE_DOCKER_LOG="$TMP/docker.log" REDIS_SECRETS_ROOT="$TMP/secrets" "$ROOT/bin/backup" >"$TMP/disabled-error" 2>&1; then
+    fail 'backup ran without an opt-in repository configuration'
+fi
+grep -q 'backups are not configured' "$TMP/disabled-error" || fail 'missing optional backup configuration was not explained'
+[ ! -s "$TMP/docker.log" ] || fail 'unconfigured backup contacted Docker'
+
+printf 'RESTIC_REPOSITORY=/local-backup/repository\n' >"$TMP/generic.env"
+PATH="$TMP/fake-bin:$PATH" FAKE_DOCKER_LOG="$TMP/docker.log" REDIS_SECRETS_ROOT="$TMP/secrets" \
+RESTIC_ENV_FILE="$TMP/generic.env" R2_ACCOUNT_ID='' R2_BUCKET='' \
+AWS_ACCESS_KEY_ID=ambient-access AWS_SECRET_ACCESS_KEY=ambient-secret \
+"$ROOT/bin/backup-init" >/dev/null || fail 'ambient AWS credentials blocked generic initialization'
+grep -Fxq 'RESTIC_REPOSITORY=/local-backup/repository' "$TMP/generic.env" || fail 'generic configuration was overwritten by R2 bootstrap'
+
 PATH="$TMP/fake-bin:$PATH" \
 FAKE_DOCKER_LOG="$TMP/docker.log" \
 REDIS_SECRETS_ROOT="$TMP/secrets" \
@@ -48,12 +61,21 @@ AWS_ACCESS_KEY_ID=test-access-key \
 AWS_SECRET_ACCESS_KEY=test-secret-key \
 "$ROOT/bin/backup-init" >/dev/null
 
-R2_ENV="$TMP/secrets/production/r2.env"
-[ -f "$R2_ENV" ] || fail 'backup-init did not create r2.env'
+R2_ENV="$TMP/secrets/production/backup.env"
+[ -f "$R2_ENV" ] || fail 'backup-init did not create backup.env'
 grep -Fxq 'R2_ACCOUNT_ID=0123456789abcdef0123456789abcdef' "$R2_ENV" || fail 'account ID missing'
 grep -Fxq 'R2_BUCKET=redis-backups' "$R2_ENV" || fail 'bucket missing'
 grep -Fxq 'RESTIC_REPOSITORY=s3:https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com/redis-backups' "$R2_ENV" || fail 'Restic R2 URL is incorrect'
-[ "$(stat -f '%Lp' "$R2_ENV" 2>/dev/null || stat -c '%a' "$R2_ENV")" = 600 ] || fail 'r2.env must have mode 600'
+[ "$(stat -f '%Lp' "$R2_ENV" 2>/dev/null || stat -c '%a' "$R2_ENV")" = 600 ] || fail 'backup.env must have mode 600'
+
+# Existing R2 installations remain usable without renaming their configuration.
+mv "$R2_ENV" "$TMP/secrets/production/r2.env"
+
+: >"$TMP/docker.log"
+if PATH="$TMP/fake-bin:$PATH" FAKE_DOCKER_LOG="$TMP/docker.log" REDIS_SECRETS_ROOT="$TMP/secrets" RESTIC_ENV_FILE="$TMP/missing.env" "$ROOT/bin/backup" >/dev/null 2>&1; then
+    fail 'an explicit missing configuration fell back to the legacy repository'
+fi
+[ ! -s "$TMP/docker.log" ] || fail 'missing explicit configuration contacted Docker'
 
 : >"$TMP/docker.log"
 PATH="$TMP/fake-bin:$PATH" FAKE_DOCKER_LOG="$TMP/docker.log" REDIS_SECRETS_ROOT="$TMP/secrets" "$ROOT/bin/backup" >/dev/null

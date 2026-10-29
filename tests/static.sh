@@ -34,6 +34,7 @@ for file in \
     systemd/self-hosted-redis-backup.timer \
     .env.example \
     r2.env.example \
+    backup.env.example \
     .gitignore \
     README.md; do
     assert_file "$file"

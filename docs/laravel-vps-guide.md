@@ -206,9 +206,9 @@ php artisan pulse:restart
 
 Pulse uses Redis as its ingest stream but stores its aggregated durable records in SQL. Queue workers and Horizon must also be restarted after credential or prefix changes.
 
-## 6. Configure Cloudflare R2 backups
+## 6. Optional: configure Cloudflare R2 backups
 
-Create an R2 token with Object Read & Write access limited to the dedicated Redis backup bucket. On the VPS:
+Redis works without backups or a cloud account. For local storage, S3, B2, or other Restic repositories, use the [backup guide](backups.md). If choosing R2, create a token with Object Read & Write access limited to the dedicated Redis backup bucket. On the VPS:
 
 ```sh
 cd /opt/self-hosted-redis
@@ -226,15 +226,14 @@ set +a
 ./bin/backup
 ```
 
-Keep an off-VPS copy of `secrets/production/restic-password`; backups cannot be decrypted without it. Install the daily systemd timer using the commands in the main [README](../README.md#daily-systemd-timer).
+Initialization writes `secrets/production/backup.env` (or updates a legacy `r2.env`). Remove the bootstrap file and unset exported R2 variables afterward. Keep an off-VPS copy of `secrets/production/restic-password`; backups cannot be decrypted without it. Optionally install the daily systemd timer using the commands in the main [README](../README.md#daily-systemd-timer).
 
 ## 7. Deployment and maintenance commands
 
-Use the host-access override whenever Redis is recreated or upgraded:
+If backups are configured, run `./bin/backup` before upgrading. Use the host-access override whenever Redis is recreated or upgraded:
 
 ```sh
 cd /opt/self-hosted-redis
-./bin/backup
 docker compose -f compose.yaml -f compose.host-access.yaml pull
 docker compose -f compose.yaml -f compose.host-access.yaml up -d --wait redis
 ./bin/check

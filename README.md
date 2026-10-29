@@ -2,14 +2,14 @@
 
 A framework-neutral, single-node Redis service for Dockerized and host-native projects. Production is private to the `shared-services` Docker network by default; an optional override publishes Redis only on VPS loopback for applications running directly on the host. Each project has an ACL user restricted to its own key and Pub/Sub namespace.
 
-This deployment has no replica or automatic failover. A VPS outage is a Redis outage. Restic backups in Cloudflare R2 provide disaster recovery, not high availability.
+This deployment has no replica or automatic failover. A VPS outage is a Redis outage. Optional Restic backups provide recovery; an off-server repository is needed for recovery from server loss.
 
 ## Requirements
 
-- Linux VPS with Docker Engine, Docker Compose v2, and systemd
+- Linux VPS with Docker Engine, Docker Compose 2.24.0 or later, and systemd for the optional backup timer
 - 1 GB RAM starting target with a 256 MiB dataset limit; size for the other applications sharing the VPS
 - OpenSSL on the host for credential generation
-- A dedicated Cloudflare R2 bucket and bucket-scoped S3 credentials
+- No cloud account is needed to run Redis; backups are optional
 
 On the VPS, enable Redis's required memory-overcommit setting and persist it using your distribution's sysctl configuration:
 
@@ -81,7 +81,22 @@ Run `docker network create` only once. Other Compose projects connect to Redis b
 
 Valid project slugs are lowercase, start with a letter, contain only letters, digits, and hyphens, and are at most 32 characters. Every client must use the emitted `<slug>:` prefix for keys and Pub/Sub channels.
 
-## Cloudflare R2 backup
+## Optional backups
+
+Backups are off by default: no repository is configured and no timer is installed or enabled automatically. Redis initialization and startup need no cloud credentials. To opt in, create a mode-`0600` `secrets/production/backup.env` with a Restic repository and its provider credentials, then run `./bin/backup-init`. Backup commands fail with an explanation when configuration is missing; they do not contact Docker or a storage provider.
+
+For a local repository with no cloud account:
+
+```sh
+cp backup.env.example secrets/production/backup.env
+chmod 600 secrets/production/backup.env
+./bin/backup-init
+./bin/backup
+```
+
+The example stores encrypted backups in the persistent `self-hosted-redis-local-restic` Docker volume at `/local-backup/repository` inside the tool container. Local backups share the server's failure risk. See [backup configuration and provider recipes](docs/backups.md) for S3, B2, R2, development use, and existing repositories. Keep a secure copy of `secrets/production/restic-password` outside the VPS; losing it prevents recovery.
+
+### Cloudflare R2 recipe
 
 In Cloudflare, create an R2 S3 API token with **Object Read & Write** access limited to the dedicated Redis backup bucket. Do not use an account-wide token.
 
@@ -96,21 +111,21 @@ set +a
 ./bin/backup-init
 ```
 
-After successful initialization, remove `r2-bootstrap.env`. The command writes the required values to ignored `secrets/production/r2.env`; it never prints credentials. Store a separate secure copy of `secrets/production/restic-password` outside the VPS. R2 data cannot be restored without it.
+After successful initialization, remove `r2-bootstrap.env` and unset the exported R2 variables. The command writes the required values to ignored `secrets/production/backup.env`; it never prints credentials. Existing `r2.env` configurations remain supported when `backup.env` is absent, and are updated in place when using this bootstrap recipe.
 
 Run and inspect a manual backup:
 
 ```sh
 ./bin/backup
-docker compose --env-file secrets/production/r2.env --profile tools run --rm restic snapshots
-docker compose --env-file secrets/production/r2.env --profile tools run --rm restic check
+RESTIC_ENV_FILE=secrets/production/backup.env docker compose --profile tools run --rm restic snapshots
+RESTIC_ENV_FILE=secrets/production/backup.env docker compose --profile tools run --rm restic check
 ```
 
 Backups request a fresh RDB snapshot before uploading. Restic encrypts the snapshot and retains 7 daily, 4 weekly, and 6 monthly versions.
 
 ### Daily systemd timer
 
-The supplied unit expects the repository at `/opt/self-hosted-redis`:
+After configuring and testing a backup repository, optionally enable the supplied timer. It expects the repository at `/opt/self-hosted-redis`:
 
 ```sh
 sudo cp systemd/self-hosted-redis-backup.service /etc/systemd/system/
@@ -128,7 +143,7 @@ The timer runs daily with up to one hour of randomized delay and catches up afte
 List snapshots and stop Redis before restoring:
 
 ```sh
-docker compose --env-file secrets/production/r2.env --profile tools run --rm restic snapshots
+RESTIC_ENV_FILE=secrets/production/backup.env docker compose --profile tools run --rm restic snapshots
 docker compose stop redis
 ./bin/restore <snapshot-id> --confirm
 ./bin/check
@@ -164,4 +179,4 @@ Install [ShellCheck](https://www.shellcheck.net/) and Docker Compose v2 before r
 ./tests/run.sh
 ```
 
-Static and unit tests do not need R2. Docker integration tests use a temporary checkout, unique test-scoped containers, networks, volumes, and an ephemeral loopback port. Test credentials, data, and Docker resources are removed afterward. The R2 integration check is opt-in and uses `secrets/production/r2.env`.
+Static and unit tests do not need R2. Docker integration tests use a temporary checkout, unique test-scoped containers, networks, volumes, and an ephemeral loopback port. They verify startup without backup configuration and a local backup/restore without cloud credentials. Test credentials, data, and Docker resources are removed afterward. The R2 integration check is opt-in and uses `RESTIC_ENV_FILE` or the production backup configuration (including legacy `r2.env`).

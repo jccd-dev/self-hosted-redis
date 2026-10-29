@@ -1,5 +1,5 @@
 [Unit]
-Description=Back up self-hosted Redis to Cloudflare R2
+Description=Back up self-hosted Redis to a Restic repository
 Requires=docker.service
 After=docker.service network-online.target
 Wants=network-online.target

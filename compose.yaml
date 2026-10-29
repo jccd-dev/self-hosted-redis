@@ -42,16 +42,16 @@ services:
     image: restic/restic:0.19.0
     profiles: ["tools"]
     entrypoint: ["restic"]
+    env_file:
+      - path: ${RESTIC_ENV_FILE:-./secrets/production/backup.env}
+        required: false
     environment:
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
-      AWS_DEFAULT_REGION: auto
-      RESTIC_REPOSITORY: ${RESTIC_REPOSITORY:-}
       RESTIC_PASSWORD_FILE: /run/secrets/restic-password
     volumes:
       - redis-data:/data:ro
       - restore-staging:/restore
       - ./secrets/production:/run/secrets:ro
+      - local-restic:/local-backup
     networks:
       - shared-services
 
@@ -68,6 +68,8 @@ volumes:
     name: self-hosted-redis-data
   restore-staging:
     name: self-hosted-redis-restore-staging
+  local-restic:
+    name: self-hosted-redis-local-restic
 
 networks:
   shared-services:

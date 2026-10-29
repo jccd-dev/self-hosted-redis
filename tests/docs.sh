@@ -9,7 +9,7 @@ fail() {
     exit 1
 }
 
-for file in README.md docs/laravel-vps-guide.md docs/client-recipes/docker.md docs/client-recipes/laravel.md docs/client-recipes/node.md docs/client-recipes/python.md; do
+for file in README.md docs/backups.md docs/laravel-vps-guide.md docs/client-recipes/docker.md docs/client-recipes/laravel.md docs/client-recipes/node.md docs/client-recipes/python.md; do
     [ -s "$file" ] || fail "missing documentation: $file"
 done
 

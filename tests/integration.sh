@@ -115,14 +115,16 @@ compose down
 compose up -d --wait redis
 [ "$(app_cli alpha "$alpha_password" GET alpha:persistent)" = before-recreate ] || fail 'data did not survive container recreation'
 
-cat >secrets/development/r2.env <<'ENV'
-R2_ACCOUNT_ID=00000000000000000000000000000000
-R2_BUCKET=local-test
-AWS_ACCESS_KEY_ID=local-test
-AWS_SECRET_ACCESS_KEY=local-test
+cat >secrets/development/backup.env <<'ENV'
 RESTIC_REPOSITORY=/local-backup/repository
+# A non-AWS provider credential must reach Restic unchanged.
+B2_ACCOUNT_KEY='test$literal#key'
 ENV
-chmod 600 secrets/development/r2.env
+chmod 600 secrets/development/backup.env
+
+# shellcheck disable=SC2016
+RESTIC_ENV_FILE="$TMP/secrets/development/backup.env" compose run --rm --no-deps --entrypoint sh restic -c \
+    'test "$B2_ACCOUNT_KEY" = '\''test$literal#key'\''' || fail 'generic provider credential was not passed literally'
 
 REDIS_ENV=development ./bin/backup-init >/dev/null
 REDIS_ENV=development ./bin/backup >/dev/null
