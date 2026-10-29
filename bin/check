@@ -19,7 +19,22 @@ fi
 compose ps --status running --services | grep -Fxq redis || die "Redis container is not running"
 [ "$(redis_admin PING)" = PONG ] || die "authenticated Redis ping failed"
 
-redis_admin INFO memory | grep -Eq '^maxmemory:2147483648' || die "Redis maxmemory is not 2 GB"
+configured_memory=$(compose exec -T redis printenv REDIS_MAXMEMORY)
+expected_memory=$(printf '%s\n' "$configured_memory" | awk '
+    {
+        value = tolower($0)
+        if (value !~ /^[0-9]+((k|m|g)b?)?$/) exit 1
+        amount = value + 0
+        sub(/^[0-9]+/, "", value)
+        scale[""] = 1; scale["k"] = 1000; scale["kb"] = 1024
+        scale["m"] = 1000000; scale["mb"] = 1048576
+        scale["g"] = 1000000000; scale["gb"] = 1073741824
+        printf "%.0f\n", amount * scale[value]
+    }
+') || die "invalid configured Redis maxmemory: $configured_memory"
+[ "$(redis_admin CONFIG GET maxmemory | tail -n 1)" = "$expected_memory" ] || die "Redis maxmemory differs from configured $configured_memory"
+expected_policy=$(compose exec -T redis printenv REDIS_MAXMEMORY_POLICY)
+[ "$(redis_admin CONFIG GET maxmemory-policy | tail -n 1)" = "$expected_policy" ] || die "Redis eviction policy differs from configured $expected_policy"
 redis_admin INFO persistence | grep -Eq '^aof_enabled:1' || die "AOF persistence is not enabled"
 
 printf '%s Redis checks passed.\n' "$REDIS_ENV"

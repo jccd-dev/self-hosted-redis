@@ -73,7 +73,7 @@ fi
 PATH="$TMP/fake-bin:$PATH" FAKE_DOCKER_LOG="$TMP/docker.log" FAKE_AOF_PENDING=1 REDIS_SECRETS_ROOT="$TMP/secrets" "$ROOT/bin/restore" abcd1234 --confirm >/dev/null
 grep -Eq 'restic restore abcd1234 --target /restore --include /data/dump.rdb' "$TMP/docker.log" || fail 'snapshot was not restored into staging'
 grep -Eq 'redis-check-rdb /restore/data/dump.rdb' "$TMP/docker.log" || fail 'staged RDB was not validated'
-grep -Eq 'redis-server /usr/local/etc/redis/redis.conf --appendonly no' "$TMP/docker.log" || fail 'restore did not load the RDB with AOF disabled'
+grep -Eq 'redis-server /usr/local/etc/redis/redis.conf .*--appendonly no' "$TMP/docker.log" || fail 'restore did not load the RDB with AOF disabled'
 grep -Eq 'CONFIG SET appendonly yes' "$TMP/docker.log" || fail 'restore did not rebuild AOF from the restored RDB'
 [ "$(grep -c 'INFO persistence' "$TMP/docker.log")" -ge 2 ] || fail 'restore did not wait for scheduled AOF creation'
 grep -Eq 'up -d --no-recreate --wait redis' "$TMP/docker.log" || fail 'Redis was not started after cutover'

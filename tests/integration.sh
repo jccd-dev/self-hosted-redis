@@ -6,6 +6,7 @@ TMP=$(mktemp -d)
 COMPOSE_PROJECT_NAME="self-hosted-redis-test-$$"
 export COMPOSE_PROJECT_NAME
 unset REDIS_SECRETS_ROOT RESTIC_ENV_FILE RESTIC_REPOSITORY R2_ACCOUNT_ID R2_BUCKET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+unset REDIS_MAXMEMORY REDIS_MEM_LIMIT REDIS_MAXMEMORY_POLICY
 
 cp -R "$ROOT/bin" "$ROOT/lib" "$ROOT/config" "$TMP/"
 cp "$ROOT/compose.yaml" "$TMP/"
@@ -31,6 +32,21 @@ app_cli() {
         redis-cli --user "$user" --no-auth-warning --raw "$@"
 }
 
+admin_cli() {
+    # Credentials expand inside the container.
+    # shellcheck disable=SC2016
+    compose exec -T redis sh -c \
+        'REDISCLI_AUTH=$(cat /run/redis/admin-password) exec redis-cli --user admin --no-auth-warning --raw "$@"' sh "$@"
+}
+
+assert_sizing() {
+    compose exec -T redis sh -c 'grep -Eq "^Uid:[[:space:]]+999[[:space:]]" /proc/1/status' || fail 'Redis is not running as its unprivileged image user'
+    [ "$(admin_cli CONFIG GET maxmemory | tail -n 1)" = "$1" ] || fail 'Redis dataset limit is incorrect'
+    [ "$(admin_cli CONFIG GET maxmemory-policy | tail -n 1)" = "$2" ] || fail 'Redis eviction policy is incorrect'
+    [ "$(docker inspect --format '{{.HostConfig.Memory}}' "$(compose ps -q redis)")" = "$3" ] || fail 'container memory limit is incorrect'
+    REDIS_ENV=development ./bin/check >/dev/null
+}
+
 cleanup() {
     compose --profile tools down --volumes --remove-orphans >/dev/null
     rm -rf "$TMP"
@@ -43,6 +59,25 @@ if [ ! -f secrets/development/users.acl ]; then
 fi
 
 compose up -d --wait redis
+assert_sizing 268435456 noeviction 536870912
+
+cat >.env <<'ENV'
+REDIS_MAXMEMORY=128mb
+REDIS_MEM_LIMIT=320m
+REDIS_MAXMEMORY_POLICY=allkeys-lru
+ENV
+compose up -d --wait redis
+assert_sizing 134217728 allkeys-lru 335544320
+admin_cli CONFIG SET maxmemory 64mb >/dev/null
+if REDIS_ENV=development ./bin/check >/dev/null 2>&1; then
+    fail 'check accepted a dataset limit differing from the deployed configuration'
+fi
+admin_cli CONFIG SET maxmemory 128mb >/dev/null
+admin_cli CONFIG SET maxmemory-policy noeviction >/dev/null
+if REDIS_ENV=development ./bin/check >/dev/null 2>&1; then
+    fail 'check accepted an eviction policy differing from the deployed configuration'
+fi
+admin_cli CONFIG SET maxmemory-policy allkeys-lru >/dev/null
 
 unauthenticated=$(compose exec -T redis redis-cli --raw PING 2>&1 || true)
 printf '%s\n' "$unauthenticated" | grep -Eq 'NOAUTH|Authentication required' || fail 'unauthenticated PING was not rejected'
@@ -110,6 +145,7 @@ REDIS_ENV=development ./bin/restore latest --confirm >/dev/null
 compose down
 compose up -d --wait redis
 [ "$(app_cli alpha "$alpha_password" GET alpha:persistent)" = before-recreate ] || fail 'restored value did not survive an AOF restart'
+assert_sizing 134217728 allkeys-lru 335544320
 
 app_cli beta "$beta_password" SET beta:health ok >/dev/null || fail 'second project user failed'
 printf 'Docker integration checks passed.\n'

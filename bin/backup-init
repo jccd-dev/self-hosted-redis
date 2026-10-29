@@ -35,7 +35,7 @@ if [ "$provided" -eq 4 ]; then
     chmod 600 "$tmp"
     mv "$tmp" "$file"
 elif [ ! -f "$file" ]; then
-    die "provide R2 credentials on the first run; see .env.example"
+    die "provide R2 credentials on the first run; see r2.env.example"
 fi
 
 if restic_run snapshots >/dev/null 2>&1; then

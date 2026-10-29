@@ -36,13 +36,10 @@ compose --profile tools run --rm --no-deps redis-tools -c '
     chown -R redis:redis /data
 ' sh "$timestamp"
 
-set -- redis-server /usr/local/etc/redis/redis.conf --appendonly no
-if [ "$REDIS_ENV" = development ]; then
-    set -- "$@" --maxmemory 256mb
-fi
-
 # Rebuild AOF before the normal service can open the restored dataset.
-restore_container=$(compose run -d --rm --no-deps redis "$@")
+# shellcheck disable=SC2016
+restore_container=$(compose run -d --rm --no-deps redis sh -c \
+    'exec /usr/local/bin/docker-entrypoint.sh redis-server /usr/local/etc/redis/redis.conf --maxmemory "$REDIS_MAXMEMORY" --maxmemory-policy "$REDIS_MAXMEMORY_POLICY" --appendonly no')
 trap 'docker stop "$restore_container" >/dev/null 2>&1 || true' EXIT
 trap 'exit 1' HUP INT TERM
 

@@ -212,7 +212,7 @@ Create an R2 token with Object Read & Write access limited to the dedicated Redi
 
 ```sh
 cd /opt/self-hosted-redis
-cp .env.example secrets/production/r2-bootstrap.env
+cp r2.env.example secrets/production/r2-bootstrap.env
 chmod 600 secrets/production/r2-bootstrap.env
 ```
 

@@ -21,6 +21,9 @@ secrets_dir() {
 }
 
 compose() {
+    config_file="$ROOT/.env"
+    [ -f "$config_file" ] || config_file=/dev/null
+    set -- --env-file "$config_file" "$@"
     if [ "$REDIS_ENV" = development ]; then
         docker compose -f "$ROOT/compose.yaml" -f "$ROOT/compose.dev.yaml" "$@"
     else
@@ -77,13 +80,5 @@ require_r2_config() {
 restic_run() {
     require_r2_config
     env_file=$(r2_env_file)
-    if [ "$REDIS_ENV" = development ]; then
-        docker compose --env-file "$env_file" \
-            -f "$ROOT/compose.yaml" -f "$ROOT/compose.dev.yaml" \
-            --profile tools run --rm --no-deps restic "$@"
-    else
-        docker compose --env-file "$env_file" \
-            -f "$ROOT/compose.yaml" \
-            --profile tools run --rm --no-deps restic "$@"
-    fi
+    compose --env-file "$env_file" --profile tools run --rm --no-deps restic "$@"
 }

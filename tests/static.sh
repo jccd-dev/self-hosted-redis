@@ -33,6 +33,7 @@ for file in \
     systemd/self-hosted-redis-backup.service \
     systemd/self-hosted-redis-backup.timer \
     .env.example \
+    r2.env.example \
     .gitignore \
     README.md; do
     assert_file "$file"
@@ -42,14 +43,12 @@ assert_contains compose.yaml 'redis:8\.8\.0-alpine3\.23'
 assert_contains compose.yaml 'restic/restic:0\.19\.0'
 assert_contains compose.yaml 'shared-services'
 assert_contains compose.yaml 'external: true'
-assert_contains compose.yaml 'mem_limit: 2560m'
+assert_contains compose.yaml 'mem_limit: \$\{REDIS_MEM_LIMIT:-512m\}'
 assert_contains compose.yaml 'max-size: "10m"'
 assert_contains compose.dev.yaml '127\.0\.0\.1:6379:6379'
 assert_contains compose.host-access.yaml '127\.0\.0\.1:6379:6379'
 assert_contains config/redis.conf '^appendonly yes$'
 assert_contains config/redis.conf '^appendfsync everysec$'
-assert_contains config/redis.conf '^maxmemory 2gb$'
-assert_contains config/redis.conf '^maxmemory-policy noeviction$'
 assert_contains config/redis.conf '^aclfile /run/redis/users\.acl$'
 assert_contains .gitignore '^secrets/\*$'
 assert_contains systemd/self-hosted-redis-backup.timer '^OnCalendar=daily$'

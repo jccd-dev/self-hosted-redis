@@ -3,10 +3,17 @@ name: self-hosted-redis
 services:
   redis:
     image: redis:8.8.0-alpine3.23
-    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    command:
+      - sh
+      - -c
+      # Re-enter the image entrypoint so it still drops Redis to its own user.
+      - exec /usr/local/bin/docker-entrypoint.sh redis-server /usr/local/etc/redis/redis.conf --maxmemory "$$REDIS_MAXMEMORY" --maxmemory-policy "$$REDIS_MAXMEMORY_POLICY"
+    environment:
+      REDIS_MAXMEMORY: ${REDIS_MAXMEMORY:-256mb}
+      REDIS_MAXMEMORY_POLICY: ${REDIS_MAXMEMORY_POLICY:-noeviction}
     restart: unless-stopped
     stop_grace_period: 30s
-    mem_limit: 2560m
+    mem_limit: ${REDIS_MEM_LIMIT:-512m}
     security_opt:
       - no-new-privileges:true
     volumes:

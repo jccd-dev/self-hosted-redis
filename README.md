@@ -7,7 +7,7 @@ This deployment has no replica or automatic failover. A VPS outage is a Redis ou
 ## Requirements
 
 - Linux VPS with Docker Engine, Docker Compose v2, and systemd
-- 8 GB RAM recommended for the configured 2 GB Redis dataset limit
+- 1 GB RAM starting target with a 256 MiB dataset limit; size for the other applications sharing the VPS
 - OpenSSL on the host for credential generation
 - A dedicated Cloudflare R2 bucket and bucket-scoped S3 credentials
 
@@ -28,7 +28,33 @@ REDIS_ENV=development ./bin/project-user add example
 REDIS_ENV=development ./bin/check
 ```
 
-Development Redis listens only on `127.0.0.1:6379`, uses a 256 MB dataset limit, and stores data in `self-hosted-redis-dev-data`.
+Development Redis listens only on `127.0.0.1:6379` and stores data in `self-hosted-redis-dev-data`. It uses the same configurable memory defaults as production.
+
+## Sizing and configuration
+
+Defaults work without an operator file. To customize them, copy `.env.example` to the ignored `.env` in the repository root:
+
+```sh
+cp .env.example .env
+```
+
+Edit `REDIS_MAXMEMORY` (dataset limit), `REDIS_MEM_LIMIT` (total container memory), and `REDIS_MAXMEMORY_POLICY` (eviction policy). Redis accepts bytes or integer `k`, `kb`, `m`, `mb`, `g`, `gb` sizes; `mb` and `gb` use powers of 1024. Docker container limits use units such as `512m` or `1g`. Keep the dataset limit below the container limit. Shell environment variables override `.env` values, following [Compose interpolation rules](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/).
+
+Suggested starting points, subject to workload testing:
+
+| VPS RAM | `REDIS_MAXMEMORY` | `REDIS_MEM_LIMIT` |
+| --- | --- | --- |
+| 1 GB | `256mb` | `512m` |
+| 2 GB | `512mb` | `1g` |
+| 8 GB | `2gb` | `4g` |
+
+The container also needs memory for clients, allocator overhead, and copy-on-write during RDB saves and AOF rewrites. These limits are starting budgets, not guaranteed capacity. Leave RAM for the OS, backups, and applications. Monitor actual usage, especially during write-heavy saves; a container reaching its memory limit can be killed even before Redis reaches its dataset limit. The 1 GB target has not been soak-tested on a real VPS.
+
+Apply changes with `docker compose up -d redis`, then run `./bin/check`. For development, include `-f compose.yaml -f compose.dev.yaml` and use `REDIS_ENV=development ./bin/check`. The check compares live Redis settings with its deployed container configuration; editing `.env` alone does not update a running container.
+
+**Existing deployments:** before recreating Redis, set `.env` to your current limits. The previous defaults were `REDIS_MAXMEMORY=2gb` and `REDIS_MEM_LIMIT=2560m`. Without explicit values, recreation applies the new `256mb` / `512m` defaults. Take a backup and inspect current usage before reducing limits; `noeviction` rejects writes when full, while eviction policies can delete keys.
+
+Production host access remains opt-in: include `-f compose.yaml -f compose.host-access.yaml` in deployment commands to publish only `127.0.0.1:6379`. Omit the host-access override and recreate the service to disable it. See the [host-native guide](docs/laravel-vps-guide.md).
 
 ## Production deployment
 
@@ -59,10 +85,10 @@ Valid project slugs are lowercase, start with a letter, contain only letters, di
 
 In Cloudflare, create an R2 S3 API token with **Object Read & Write** access limited to the dedicated Redis backup bucket. Do not use an account-wide token.
 
-Create a temporary mode-`0600` bootstrap file from `.env.example`, fill in the account ID, bucket, Access Key ID, and Secret Access Key, then initialize Restic:
+Create a temporary mode-`0600` bootstrap file from `r2.env.example`, fill in the account ID, bucket, Access Key ID, and Secret Access Key, then initialize Restic:
 
 ```sh
-cp .env.example secrets/production/r2-bootstrap.env
+cp r2.env.example secrets/production/r2-bootstrap.env
 chmod 600 secrets/production/r2-bootstrap.env
 set -a
 . ./secrets/production/r2-bootstrap.env
@@ -120,7 +146,7 @@ Perform this drill after initial deployment and periodically thereafter. A backu
 - View logs: `docker compose logs --tail=200 redis`
 - Upgrade: update the pinned patch tag, review release notes, run tests, take a backup, pull, and recreate Redis
 
-The `noeviction` policy protects queues, sessions, streams, and other non-disposable data from silent deletion. When the 2 GB dataset limit is reached, writes fail. Alert before `used_memory` approaches the limit and scale or separate workloads rather than changing to an eviction policy blindly.
+The default `noeviction` policy protects queues, sessions, streams, and other non-disposable data from silent deletion. When the configured dataset limit is reached, writes fail. Alert before `used_memory` approaches the limit and scale or separate workloads rather than changing to an eviction policy blindly.
 
 ## Client recipes
 
