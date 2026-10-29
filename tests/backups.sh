@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 
@@ -21,8 +21,15 @@ case " $* " in
     *" LASTSAVE "*) printf '100\n' ;;
     *" BGSAVE "*) printf 'Background saving started\n' ;;
     *" INFO persistence "*)
-        printf 'rdb_bgsave_in_progress:0\r\nrdb_last_bgsave_status:ok\r\naof_enabled:1\r\n'
+        scheduled=0
+        if [ "${FAKE_AOF_PENDING:-0}" = 1 ] && [ ! -f "$FAKE_DOCKER_LOG.ready" ]; then
+            scheduled=1
+            touch "$FAKE_DOCKER_LOG.ready"
+        fi
+        printf 'rdb_bgsave_in_progress:0\r\nrdb_last_bgsave_status:ok\r\naof_enabled:1\r\naof_rewrite_in_progress:0\r\naof_rewrite_scheduled:%s\r\naof_last_bgrewrite_status:%s\r\n' "$scheduled" "${FAKE_AOF_STATUS:-ok}"
         ;;
+    *" run -d --rm --no-deps redis "*) printf 'restore-test-container\n' ;;
+    *" CONFIG SET appendonly yes "*) printf '%s\n' "${FAKE_AOF_RESPONSE:-OK}" ;;
     *" PING "*) printf 'PONG\n' ;;
     *" restic snapshots "*) exit "${FAKE_SNAPSHOTS_EXIT:-0}" ;;
     *) printf 'OK\n' ;;
@@ -63,12 +70,27 @@ if PATH="$TMP/fake-bin:$PATH" FAKE_DOCKER_LOG="$TMP/docker.log" FAKE_REDIS_RUNNI
 fi
 
 : >"$TMP/docker.log"
-PATH="$TMP/fake-bin:$PATH" FAKE_DOCKER_LOG="$TMP/docker.log" REDIS_SECRETS_ROOT="$TMP/secrets" "$ROOT/bin/restore" abcd1234 --confirm >/dev/null
+PATH="$TMP/fake-bin:$PATH" FAKE_DOCKER_LOG="$TMP/docker.log" FAKE_AOF_PENDING=1 REDIS_SECRETS_ROOT="$TMP/secrets" "$ROOT/bin/restore" abcd1234 --confirm >/dev/null
 grep -Eq 'restic restore abcd1234 --target /restore --include /data/dump.rdb' "$TMP/docker.log" || fail 'snapshot was not restored into staging'
 grep -Eq 'redis-check-rdb /restore/data/dump.rdb' "$TMP/docker.log" || fail 'staged RDB was not validated'
 grep -Eq 'redis-server /usr/local/etc/redis/redis.conf --appendonly no' "$TMP/docker.log" || fail 'restore did not load the RDB with AOF disabled'
 grep -Eq 'CONFIG SET appendonly yes' "$TMP/docker.log" || fail 'restore did not rebuild AOF from the restored RDB'
-grep -Eq 'aof_rewrite_in_progress' "$TMP/docker.log" || fail 'restore did not wait for AOF creation'
-grep -Eq 'up -d redis' "$TMP/docker.log" || fail 'Redis was not started after cutover'
+[ "$(grep -c 'INFO persistence' "$TMP/docker.log")" -ge 2 ] || fail 'restore did not wait for scheduled AOF creation'
+grep -Eq 'up -d --no-recreate --wait redis' "$TMP/docker.log" || fail 'Redis was not started after cutover'
+
+for failure in rejected failed; do
+    : >"$TMP/docker.log"
+    response=OK
+    status=ok
+    if [ "$failure" = rejected ]; then response='ERR cannot enable AOF'; else status=err; fi
+    if PATH="$TMP/fake-bin:$PATH" FAKE_DOCKER_LOG="$TMP/docker.log" FAKE_AOF_RESPONSE="$response" FAKE_AOF_STATUS="$status" REDIS_SECRETS_ROOT="$TMP/secrets" "$ROOT/bin/restore" latest --confirm >"$TMP/restore-error" 2>&1; then
+        fail "restore accepted $failure AOF creation"
+    fi
+    grep -Eq 'AOF' "$TMP/restore-error" || fail 'restore did not explain the AOF failure'
+    grep -Eq '^stop restore-test-container$' "$TMP/docker.log" || fail 'restore did not stop its temporary Redis on failure'
+    if grep -Eq 'up -d --no-recreate --wait redis' "$TMP/docker.log"; then
+        fail 'restore started the normal service after AOF creation failed'
+    fi
+done
 
 printf 'Backup checks passed.\n'

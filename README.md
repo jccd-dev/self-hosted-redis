@@ -1,6 +1,6 @@
 # Self-hosted Redis
 
-A framework-neutral, single-node Redis service for multiple Dockerized projects. Production is private to the `shared-services` Docker network. Each project has an ACL user restricted to its own key and Pub/Sub namespace. Local development uses separate storage and credentials and only publishes Redis on `127.0.0.1`.
+A framework-neutral, single-node Redis service for Dockerized and host-native projects. Production is private to the `shared-services` Docker network by default; an optional override publishes Redis only on VPS loopback for applications running directly on the host. Each project has an ACL user restricted to its own key and Pub/Sub namespace.
 
 This deployment has no replica or automatic failover. A VPS outage is a Redis outage. Restic backups in Cloudflare R2 provide disaster recovery, not high availability.
 
@@ -108,7 +108,7 @@ docker compose stop redis
 ./bin/check
 ```
 
-Restore downloads only `dump.rdb` into a staging volume, validates it with `redis-check-rdb`, copies the current Redis volume into a timestamped safety directory in staging, replaces the live dataset, and starts Redis. Keep the safety copy until application checks pass. A restore intentionally discards the old AOF after preserving it because Redis would otherwise replay newer data over the restored RDB.
+Restore downloads only `dump.rdb` into a staging volume, validates it with `redis-check-rdb`, and copies the current Redis volume into a timestamped safety directory in staging. It loads the restored RDB in a temporary Redis container with AOF disabled, enables AOF, and waits for a successful rewrite before restarting the existing service with its deployed port mappings and settings. Keep the safety copy until application checks pass; later restores preserve earlier safety directories. A restore intentionally discards the old AOF after preserving it because Redis would otherwise replay newer data over the restored RDB.
 
 Perform this drill after initial deployment and periodically thereafter. A backup that has never been restored is not verified recovery.
 
@@ -128,11 +128,14 @@ The `noeviction` policy protects queues, sessions, streams, and other non-dispos
 - [Node.js / ioredis](docs/client-recipes/node.md)
 - [Python / redis-py](docs/client-recipes/python.md)
 - [Laravel and Pulse](docs/client-recipes/laravel.md)
+- [Complete Laravel VPS guide: host-native and Dockerized](docs/laravel-vps-guide.md)
 
 ## Tests
+
+Install [ShellCheck](https://www.shellcheck.net/) and Docker Compose v2 before running the suite.
 
 ```sh
 ./tests/run.sh
 ```
 
-Static and unit tests do not need R2. Docker integration tests create only development-scoped containers, networks, and volumes. The R2 integration check is opt-in and uses `secrets/production/r2.env`.
+Static and unit tests do not need R2. Docker integration tests use a temporary checkout, unique test-scoped containers, networks, volumes, and an ephemeral loopback port. Test credentials, data, and Docker resources are removed afterward. The R2 integration check is opt-in and uses `secrets/production/r2.env`.

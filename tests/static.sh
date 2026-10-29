@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
 
 fail() {
@@ -22,6 +22,7 @@ assert_contains() {
 for file in \
     compose.yaml \
     compose.dev.yaml \
+    compose.host-access.yaml \
     config/redis.conf \
     bin/init \
     bin/project-user \
@@ -44,6 +45,7 @@ assert_contains compose.yaml 'external: true'
 assert_contains compose.yaml 'mem_limit: 2560m'
 assert_contains compose.yaml 'max-size: "10m"'
 assert_contains compose.dev.yaml '127\.0\.0\.1:6379:6379'
+assert_contains compose.host-access.yaml '127\.0\.0\.1:6379:6379'
 assert_contains config/redis.conf '^appendonly yes$'
 assert_contains config/redis.conf '^appendfsync everysec$'
 assert_contains config/redis.conf '^maxmemory 2gb$'
@@ -56,9 +58,13 @@ if grep -Eq '^[[:space:]]*ports:' compose.yaml; then
     fail 'production compose must not publish Redis ports'
 fi
 
-for script in bin/init bin/project-user bin/check bin/backup-init bin/backup bin/restore tests/*.sh; do
+docker compose -f compose.yaml -f compose.host-access.yaml config | grep -q 'host_ip: 127.0.0.1' ||
+    fail 'host-access override must bind Redis to loopback only'
+
+for script in bin/* lib/*.sh tests/*.sh; do
     sh -n "$script"
 done
+shellcheck -x bin/* lib/*.sh tests/*.sh
 
 docker compose -f compose.yaml config >/dev/null
 docker compose -f compose.yaml -f compose.dev.yaml config >/dev/null

@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 . "$ROOT/lib/common.sh"
 
 [ "$#" -eq 2 ] || die "usage: ./bin/restore <snapshot-id|latest> --confirm"
@@ -11,18 +11,21 @@ printf '%s\n' "$snapshot" | grep -Eq '^(latest|[A-Za-z0-9_-]+)$' || die "invalid
 
 validate_environment
 require_r2_config
+require_secret admin-password
 
 if compose ps --status running --services | grep -Fxq redis; then
     die "Redis must be stopped before restore; run docker compose stop redis"
 fi
 
 compose --profile tools run --rm --no-deps redis-tools -c \
-    'find /restore -mindepth 1 -maxdepth 1 -exec rm -rf {} +'
+    'rm -rf /restore/data'
 restic_run restore "$snapshot" --target /restore --include /data/dump.rdb
 compose --profile tools run --rm --no-deps redis-tools -c \
     'redis-check-rdb /restore/data/dump.rdb'
 
 timestamp=$(date -u +%Y%m%dT%H%M%SZ)
+# Variables in this script expand inside the container.
+# shellcheck disable=SC2016
 compose --profile tools run --rm --no-deps redis-tools -c '
     set -eu
     safety="/restore/safety-$1"
@@ -33,15 +36,52 @@ compose --profile tools run --rm --no-deps redis-tools -c '
     chown -R redis:redis /data
 ' sh "$timestamp"
 
-compose up -d redis
+set -- redis-server /usr/local/etc/redis/redis.conf --appendonly no
+if [ "$REDIS_ENV" = development ]; then
+    set -- "$@" --maxmemory 256mb
+fi
+
+# Rebuild AOF before the normal service can open the restored dataset.
+restore_container=$(compose run -d --rm --no-deps redis "$@")
+trap 'docker stop "$restore_container" >/dev/null 2>&1 || true' EXIT
+trap 'exit 1' HUP INT TERM
+
+# Credentials and arguments expand inside the container.
+# shellcheck disable=SC2016
+restore_admin() {
+    docker exec "$restore_container" sh -c \
+        'REDISCLI_AUTH=$(cat /run/redis/admin-password) exec redis-cli -e --user admin --no-auth-warning --raw "$@"' \
+        sh "$@"
+}
+
 attempt=0
 while [ "$attempt" -lt 30 ]; do
-    if [ "$(redis_admin PING 2>/dev/null || true)" = PONG ]; then
-        printf 'Restored snapshot %s; previous data is preserved in restore staging safety-%s.\n' "$snapshot" "$timestamp"
-        exit 0
+    if [ "$(restore_admin PING 2>/dev/null || true)" = PONG ]; then
+        break
     fi
     sleep 1
     attempt=$((attempt + 1))
 done
+[ "$attempt" -lt 30 ] || die "restored Redis did not become healthy; previous data remains in restore staging safety-$timestamp"
 
-die "restored Redis did not become healthy; previous data remains in restore staging safety-$timestamp"
+[ "$(restore_admin CONFIG SET appendonly yes)" = OK ] || die "could not enable AOF; previous data remains in restore staging safety-$timestamp"
+attempt=0
+while :; do
+    persistence=$(restore_admin INFO persistence | tr -d '\r')
+    enabled=$(printf '%s\n' "$persistence" | awk -F: '$1 == "aof_enabled" {print $2}')
+    rewriting=$(printf '%s\n' "$persistence" | awk -F: '$1 == "aof_rewrite_in_progress" {print $2}')
+    scheduled=$(printf '%s\n' "$persistence" | awk -F: '$1 == "aof_rewrite_scheduled" {print $2}')
+    status=$(printf '%s\n' "$persistence" | awk -F: '$1 == "aof_last_bgrewrite_status" {print $2}')
+    if [ "$enabled" = 1 ] && [ "$rewriting" = 0 ] && [ "$scheduled" = 0 ]; then
+        [ "$status" = ok ] || die "AOF rebuild failed; previous data remains in restore staging safety-$timestamp"
+        break
+    fi
+    [ "$attempt" -lt 300 ] || die "timed out waiting for AOF rebuild; previous data remains in restore staging safety-$timestamp"
+    sleep 1
+    attempt=$((attempt + 1))
+done
+
+docker stop "$restore_container" >/dev/null
+trap - EXIT HUP INT TERM
+compose up -d --no-recreate --wait redis
+printf 'Restored snapshot %s; previous data is preserved in restore staging safety-%s.\n' "$snapshot" "$timestamp"

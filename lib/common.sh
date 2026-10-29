@@ -1,6 +1,6 @@
 #!/bin/sh
 
-ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 REDIS_ENV=${REDIS_ENV:-production}
 REDIS_SECRETS_ROOT=${REDIS_SECRETS_ROOT:-$ROOT/secrets}
 
@@ -46,6 +46,8 @@ require_secret() {
     [ -f "$path" ] || die "missing $path; run ./bin/init $REDIS_ENV first"
 }
 
+# Credentials and arguments expand inside the container.
+# shellcheck disable=SC2016
 redis_admin() {
     require_secret admin-password
     compose exec -T redis sh -c \
@@ -53,6 +55,8 @@ redis_admin() {
         sh "$@"
 }
 
+# Credentials and arguments expand inside the container.
+# shellcheck disable=SC2016
 redis_backup() {
     require_secret backup-password
     compose exec -T redis sh -c \

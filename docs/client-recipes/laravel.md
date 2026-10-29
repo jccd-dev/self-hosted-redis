@@ -1,5 +1,7 @@
 # Laravel and Laravel Pulse
 
+For complete VPS deployment instructions covering both host-native and Dockerized Laravel applications, see the [Laravel VPS guide](../laravel-vps-guide.md).
+
 Map the generated project credentials into Laravel's expected environment names:
 
 ```dotenv

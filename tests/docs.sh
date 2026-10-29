@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
 
 fail() {
@@ -9,7 +9,7 @@ fail() {
     exit 1
 }
 
-for file in README.md docs/client-recipes/docker.md docs/client-recipes/laravel.md docs/client-recipes/node.md docs/client-recipes/python.md; do
+for file in README.md docs/laravel-vps-guide.md docs/client-recipes/docker.md docs/client-recipes/laravel.md docs/client-recipes/node.md docs/client-recipes/python.md; do
     [ -s "$file" ] || fail "missing documentation: $file"
 done
 
@@ -21,5 +21,10 @@ grep -Eq 'Object Read.*Write' README.md || fail 'R2 token scope is not documente
 grep -Eq 'single-node|single node' README.md || fail 'single-node limitation is not documented'
 grep -Eq 'vm\.overcommit_memory' README.md || fail 'Redis kernel prerequisite is not documented'
 grep -Eq '/opt/self-hosted-redis' README.md || fail 'systemd installation path is not documented'
+grep -Eq '127\.0\.0\.1' docs/laravel-vps-guide.md || fail 'non-Docker Laravel Redis host is not documented'
+grep -Eq 'shared-services' docs/laravel-vps-guide.md || fail 'Dockerized Laravel network is not documented'
+grep -Eq 'REDIS_HOST=redis' docs/laravel-vps-guide.md || fail 'Dockerized Laravel Redis hostname is not documented'
+grep -Eq 'config:clear' docs/laravel-vps-guide.md || fail 'Laravel configuration refresh is not documented'
+grep -Eq 'Pulse' docs/laravel-vps-guide.md || fail 'Laravel Pulse usage is not documented'
 
 printf 'Documentation checks passed.\n'
