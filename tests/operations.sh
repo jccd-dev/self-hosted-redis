@@ -55,7 +55,7 @@ assert_contains "$OUTPUT" '^REDIS_PASSWORD=[0-9a-f]{64}$'
 assert_contains "$OUTPUT" '^REDIS_DATABASE=0$'
 assert_contains "$OUTPUT" '^REDIS_PREFIX=sample:$'
 assert_contains "$OUTPUT" '^REDIS_URL=redis://sample:[0-9a-f]{64}@redis:6379/0$'
-grep -Eq 'ACL SETUSER sample reset on #[0-9a-f]{64} resetkeys ~sample:\* resetchannels &sample:\* \+@all -@admin -@dangerous' "$TMP/docker.log" || fail 'project ACL command is incorrect'
+grep -Eq 'ACL SETUSER sample reset on #[0-9a-f]{64} resetkeys ~sample:\* resetchannels &sample:\* \+@all -@admin -@dangerous -function\|delete -function\|flush -function\|load -function\|restore -script\|flush -randomkey -pubsub\|channels -pubsub\|shardchannels -pubsub\|numpat' "$TMP/docker.log" || fail 'project ACL command is incorrect'
 grep -Eq 'ACL SAVE' "$TMP/docker.log" || fail 'ACL changes were not saved'
 
 : >"$TMP/docker.log"

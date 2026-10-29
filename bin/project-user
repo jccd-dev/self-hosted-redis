@@ -44,7 +44,10 @@ case "$action" in
         hash=$(password_hash "$password")
         redis_admin ACL SETUSER "$slug" reset on "#$hash" \
             resetkeys "~$slug:*" resetchannels "&$slug:*" \
-            '+@all' '-@admin' '-@dangerous' >/dev/null
+            '+@all' '-@admin' '-@dangerous' \
+            '-function|delete' '-function|flush' '-function|load' '-function|restore' \
+            '-script|flush' '-randomkey' \
+            '-pubsub|channels' '-pubsub|shardchannels' '-pubsub|numpat' >/dev/null
         redis_admin ACL SAVE >/dev/null
         print_connection "$password"
         ;;

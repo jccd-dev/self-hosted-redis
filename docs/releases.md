@@ -57,10 +57,12 @@ must succeed before Redis is stopped. Updates briefly interrupt service.
 
 The updater replaces shipped code in place and recreates Redis. It preserves
 `secrets/`, `.env`, `.host-access`, the installation path, and all Docker data
-volumes. The previous code is retained as `.previous.tar.gz` with private
-permissions. A failed startup or health check attempts to restore that code and
-restart Redis, returning failure even when recovery succeeds. Check the output
-and `docker compose logs redis` if recovery fails. An interrupted process can
+volumes. After a successful update, the previous code is retained as
+`.previous.tar.gz` with private permissions. Requesting the installed version
+changes nothing. A failed startup or health check attempts to restore the
+previous code and restart Redis, returning failure even when recovery succeeds;
+the existing rollback target is kept. If recovery fails, the previous code is in
+`.previous.tar.gz.tmp`; check the output and `docker compose logs redis`. An interrupted process can
 leave `.update-lock`; verify no updater is running before removing that empty
 directory with `rmdir .update-lock`.
 

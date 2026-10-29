@@ -85,6 +85,11 @@ if PATH="$TMP/fake-bin:$PATH" SELF_HOSTED_REDIS_RELEASE_URL="file://$TMP/release
 fi
 [ "$(cat "$TMP/install/VERSION")" = 0.1.0 ]
 cmp "$TMP/expected.acl" "$TMP/install/secrets/production/users.acl"
+# Failed and same-version updates keep the existing rollback target.
+[ "$(tar -xzOf "$TMP/install/.previous.tar.gz" self-hosted-redis/VERSION)" = 0.2.0 ]
+[ ! -e "$TMP/install/.previous.tar.gz.tmp" ]
+PATH="$TMP/fake-bin:$PATH" SELF_HOSTED_REDIS_RELEASE_URL="file://$TMP/releases" "$TMP/install/bin/update" v0.1.0 | grep -q 'already installed'
+[ "$(tar -xzOf "$TMP/install/.previous.tar.gz" self-hosted-redis/VERSION)" = 0.2.0 ]
 # Configured backups fail closed before code replacement.
 printf 'RESTIC_REPOSITORY=/local-backup/repository\n' >"$TMP/install/secrets/production/backup.env"
 if PATH="$TMP/fake-bin:$PATH" SELF_HOSTED_REDIS_RELEASE_URL="file://$TMP/releases" "$TMP/install/bin/update" v0.2.0; then

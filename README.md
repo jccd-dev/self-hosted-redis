@@ -94,6 +94,8 @@ Run `docker network create` only once. Other Compose projects connect to Redis b
 
 Valid project slugs are lowercase, start with a letter, contain only letters, digits, and hyphens, and are at most 32 characters. Every client must use the emitted `<slug>:` prefix for keys and Pub/Sub channels.
 
+Project users cannot read or write other projects' keys or channels, or manage server-wide functions and scripts. `SCAN` and `DBSIZE` stay allowed for client compatibility, so a project can see other projects' key names and the total key count, but not their values. Avoid putting secrets in key names.
+
 ## Optional backups
 
 Backups are off by default: no repository is configured and no timer is installed or enabled automatically. Redis initialization and startup need no cloud credentials. To opt in, create a mode-`0600` `secrets/production/backup.env` with a Restic repository and its provider credentials, then run `./bin/backup-init`. Backup commands fail with an explanation when configuration is missing; they do not contact Docker or a storage provider.

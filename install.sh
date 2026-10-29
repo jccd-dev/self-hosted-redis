@@ -64,9 +64,10 @@ cleanup() {
     if [ "$cutover" = 1 ]; then
         printf 'Update failed. Restoring the previous release code.\n' >&2
         if compose stop redis && restore_code "$work/old/self-hosted-redis" && compose up -d --force-recreate --wait redis && "$prefix/bin/check"; then
+            rm -f "$prefix/.previous.tar.gz.tmp"
             printf 'Previous release recovered; update was not applied.\n' >&2
         else
-            printf 'Recovery failed. Previous code is in %s/.previous.tar.gz; inspect Docker logs before retrying.\n' "$prefix" >&2
+            printf 'Recovery failed. Previous code is in %s/.previous.tar.gz.tmp; inspect Docker logs before retrying.\n' "$prefix" >&2
         fi
     fi
     [ "$locked" = 0 ] || rmdir "$prefix/.update-lock"
@@ -141,6 +142,10 @@ if [ "$update" = 0 ]; then
     [ "$host_access" = 0 ] || touch "$prefix/.host-access"
 else
     [ -f "$release/VERSION" ] || fail 'previous release is incomplete'
+    if [ "$rollback" = 0 ] && cmp -s "$release/VERSION" "$prefix/VERSION"; then
+        printf 'Release %s is already installed.\n' "$(cat "$prefix/VERSION")"
+        exit 0
+    fi
 fi
 # Reuse the same Compose settings as the operation scripts.
 ROOT=$prefix
@@ -190,13 +195,14 @@ else
     compose config >/dev/null
     compose pull redis
     ROOT=$prefix
+    # The rollback target is replaced only after the new release passes its checks.
     tar -czf "$prefix/.previous.tar.gz.tmp" -C "$work/old" self-hosted-redis
-    mv "$prefix/.previous.tar.gz.tmp" "$prefix/.previous.tar.gz"
-    compose stop redis
     cutover=1
+    compose stop redis
     restore_code "$release"
     compose up -d --force-recreate --wait redis
     "$prefix/bin/check"
     cutover=0
+    mv "$prefix/.previous.tar.gz.tmp" "$prefix/.previous.tar.gz"
     printf 'Release %s is running. Previous code retained in %s/.previous.tar.gz.\n' "$(cat "$prefix/VERSION")" "$prefix"
 fi

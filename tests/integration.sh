@@ -100,8 +100,9 @@ cross=$(app_cli alpha "$alpha_password" SET beta:intrusion denied 2>&1 || true)
 printf '%s\n' "$cross" | grep -q 'NOPERM' || fail 'cross-project key access was not denied'
 plain=$(app_cli alpha "$alpha_password" SET unprefixed denied 2>&1 || true)
 printf '%s\n' "$plain" | grep -q 'NOPERM' || fail 'unprefixed key access was not denied'
-for command in FLUSHALL FLUSHDB SHUTDOWN; do
-    denied=$(app_cli alpha "$alpha_password" "$command" 2>&1 || true)
+for command in FLUSHALL FLUSHDB SHUTDOWN RANDOMKEY 'FUNCTION FLUSH' 'FUNCTION DELETE lib' 'SCRIPT FLUSH' 'PUBSUB CHANNELS'; do
+    # shellcheck disable=SC2086 # split multi-word commands into arguments
+    denied=$(app_cli alpha "$alpha_password" $command 2>&1 || true)
     printf '%s\n' "$denied" | grep -q 'NOPERM' || fail "$command was not denied"
 done
 denied=$(app_cli alpha "$alpha_password" CONFIG GET maxmemory 2>&1 || true)
