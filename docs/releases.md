@@ -8,10 +8,7 @@ assigned to the container’s Redis user. Run the installed operation scripts
 with `sudo` too. It prints advice for memory
 overcommit and Transparent Huge Pages; it does not change host settings.
 
-Release downloads use `jccd-dev/self-hosted-redis`. The repository rename,
-published assets, and public curl installation are Phase 5 work. Until those
-exist, the following commands describe the release interface and will fail to
-download a release.
+Release downloads use `jccd-dev/self-hosted-redis`.
 
 ```sh
 curl -fsSL https://github.com/jccd-dev/self-hosted-redis/releases/latest/download/install.sh | sudo sh
@@ -75,17 +72,22 @@ writes or a Redis data-format migration. Keep off-server backups for server loss
 
 ## Release asset contract
 
-Phase 5 packaging must publish these assets for each `vX.Y.Z` tag:
+Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`. It runs the test
+suite, builds the assets with `scripts/package-release.sh`, and publishes them
+with the matching `CHANGELOG.md` section as release notes. Packaging fails when
+the tag differs from `VERSION` or the changelog entry is undated. Each release
+publishes:
 
 - `install.sh`: the standalone installer.
 - `self-hosted-redis.tar.gz`: one `self-hosted-redis/` directory containing
-  `VERSION` (`X.Y.Z`), `install.sh`, `bin/`, `lib/`, `config/`, `docs/`, `systemd/`,
+  `VERSION` (`X.Y.Z`), `LICENSE`, `install.sh`, `bin/`, `lib/`, `config/`, `docs/`, `systemd/`,
   the three Compose files, README, and `.env.example`, `backup.env.example`,
   `r2.env.example`.
 - `self-hosted-redis.tar.gz.sha256`: the archive's SHA-256 digest, optionally
   followed by its filename, as emitted by `sha256sum`.
 
-Exclude operator state, secrets, Git metadata, symlinks, and special files.
+Only files Git tracks or would track are packaged, so ignored operator state,
+secrets, and editor files stay out. Packaging rejects symlinks and special files.
 Checksums detect corruption; their authenticity depends on the trusted HTTPS
 release origin. Release code runs with the operator's Docker authority.
 

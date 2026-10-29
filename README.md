@@ -4,6 +4,17 @@ A framework-neutral, single-node Redis service for Dockerized and host-native pr
 
 This deployment has no replica or automatic failover. A VPS outage is a Redis outage. Optional Restic backups provide recovery; an off-server repository is needed for recovery from server loss.
 
+## Quickstart
+
+On a Linux VPS with Docker Engine and Docker Compose 2.24.0 or later:
+
+```sh
+curl -fsSL https://github.com/jccd-dev/self-hosted-redis/releases/latest/download/install.sh | sudo sh
+sudo /opt/self-hosted-redis/bin/project-user add my-app
+```
+
+The installer verifies the release checksum, installs to `/opt/self-hosted-redis`, generates credentials, and starts Redis on the private `shared-services` network. `project-user add` prints that application's connection settings once. Add `-s -- --host-access` after `sudo sh` for applications running directly on the host. Update later with `sudo /opt/self-hosted-redis/bin/update`. See [the release guide](docs/releases.md) before installing.
+
 ## Requirements
 
 - Linux VPS with Docker Engine, Docker Compose 2.24.0 or later, and systemd for the optional backup timer
@@ -58,7 +69,7 @@ Production host access remains opt-in: include `-f compose.yaml -f compose.host-
 
 ## Production deployment
 
-For release installation, updates, and rollback, see [the release guide](docs/releases.md). Public release assets are pending Phase 5.
+For release installation, updates, and rollback, see [the release guide](docs/releases.md).
 
 For the manual Compose path, install the repository at `/opt/self-hosted-redis`, then initialize the private Docker network and credentials:
 
@@ -183,4 +194,12 @@ Install [ShellCheck](https://www.shellcheck.net/) and Docker Compose v2 before r
 
 Static and unit tests do not need R2. Docker integration tests use a temporary checkout, unique test-scoped containers, networks, volumes, and an ephemeral loopback port. They verify startup without backup configuration and a local backup/restore without cloud credentials. Test credentials, data, and Docker resources are removed afterward. The R2 integration check is opt-in and uses `RESTIC_ENV_FILE` or the production backup configuration (including legacy `r2.env`).
 
-Release lifecycle tests also use a privileged disposable Linux Docker daemon, isolated from host production volumes. See [release verification](docs/releases.md#verification).
+Release lifecycle tests also use a privileged disposable Linux Docker daemon, isolated from host production volumes. See [release verification](docs/releases.md#verification). GitHub Actions runs the suite on pushes to `main` and on pull requests.
+
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [CHANGELOG.md](CHANGELOG.md). Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+
+## License
+
+[MIT](LICENSE)

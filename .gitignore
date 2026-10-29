@@ -5,3 +5,4 @@ secrets/*
 .host-access
 .previous.tar.gz*
 .update-lock/
+dist/

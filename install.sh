@@ -81,7 +81,7 @@ if [ "$update" = 1 ]; then
 fi
 
 # Only shipped code is replaced. Operator state and Docker volumes stay in place.
-code_items='bin lib config docs systemd install.sh VERSION README.md compose.yaml compose.dev.yaml compose.host-access.yaml .env.example backup.env.example r2.env.example'
+code_items='bin lib config docs systemd install.sh VERSION LICENSE README.md compose.yaml compose.dev.yaml compose.host-access.yaml .env.example backup.env.example r2.env.example'
 restore_code() {
     for item in $code_items; do
         rm -rf "${prefix:?}/$item" || return 1

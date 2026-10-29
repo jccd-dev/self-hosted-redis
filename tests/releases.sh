@@ -3,12 +3,25 @@ set -eu
 ROOT=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT HUP INT TERM
-mkdir -p "$TMP/releases/download/v0.1.0" "$TMP/package/self-hosted-redis" "$TMP/fake-bin"
-for item in bin lib config compose.yaml compose.dev.yaml compose.host-access.yaml .env.example backup.env.example r2.env.example README.md; do
-    cp -R "$ROOT/$item" "$TMP/package/self-hosted-redis/"
+mkdir -p "$TMP/package" "$TMP/fake-bin"
+if "$ROOT/scripts/package-release.sh" "$TMP/mismatch" v9.9.9 >/dev/null 2>&1; then
+    echo 'FAIL: packaging accepted a tag that differs from VERSION' >&2; exit 1
+fi
+# The first fixture is the real release package, relabeled 0.1.0 for later version bumps.
+"$ROOT/scripts/package-release.sh" "$TMP/built" >/dev/null
+(cd "$TMP/built" && sha256sum -c self-hosted-redis.tar.gz.sha256 >/dev/null)
+cmp "$ROOT/install.sh" "$TMP/built/install.sh"
+[ -s "$TMP/built/release-notes.md" ]
+tar -tzf "$TMP/built/self-hosted-redis.tar.gz" >"$TMP/entries"
+for entry in VERSION LICENSE install.sh bin/update docs/releases.md systemd/self-hosted-redis-backup.timer .env.example; do
+    grep -qx "self-hosted-redis/$entry" "$TMP/entries" || { echo "FAIL: release lacks $entry" >&2; exit 1; }
 done
-cp "$ROOT/install.sh" "$TMP/package/self-hosted-redis/"
+if grep -Ev '^self-hosted-redis/' "$TMP/entries" || grep -E '/(secrets/.+|\.env|\.git.*|\.DS_Store|tests/.*|scripts/.*|\.host-access)$' "$TMP/entries"; then
+    echo 'FAIL: release contains unexpected paths' >&2; exit 1
+fi
+tar -xzf "$TMP/built/self-hosted-redis.tar.gz" -C "$TMP/package"
 printf '0.1.0\n' >"$TMP/package/self-hosted-redis/VERSION"
+mkdir -p "$TMP/releases/download/v0.1.0"
 tar -czf "$TMP/releases/download/v0.1.0/self-hosted-redis.tar.gz" -C "$TMP/package" self-hosted-redis
 (cd "$TMP/releases/download/v0.1.0" && sha256sum self-hosted-redis.tar.gz >self-hosted-redis.tar.gz.sha256)
 cat >"$TMP/fake-bin/uname" <<'FAKE'
@@ -43,6 +56,7 @@ PATH="$TMP/fake-bin:$PATH" SELF_HOSTED_REDIS_RELEASE_URL="file://$TMP/releases" 
 [ "$(cat "$TMP/install/VERSION")" = 0.1.0 ]
 [ -s "$TMP/install/secrets/production/users.acl" ]
 [ -f "$TMP/install/.env" ]
+[ -f "$TMP/install/LICENSE" ]
 printf 'REDIS_MAXMEMORY=256mb\n# operator setting\n' >"$TMP/install/.env"
 cp "$TMP/install/.env" "$TMP/expected.env"
 cp "$TMP/install/secrets/production/users.acl" "$TMP/expected.acl"

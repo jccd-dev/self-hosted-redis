@@ -36,6 +36,13 @@ for file in \
     r2.env.example \
     backup.env.example \
     .gitignore \
+    LICENSE \
+    CHANGELOG.md \
+    SECURITY.md \
+    CONTRIBUTING.md \
+    scripts/package-release.sh \
+    .github/workflows/ci.yml \
+    .github/workflows/release.yml \
     README.md; do
     assert_file "$file"
 done
@@ -61,10 +68,10 @@ fi
 docker compose -f compose.yaml -f compose.host-access.yaml config | grep -q 'host_ip: 127.0.0.1' ||
     fail 'host-access override must bind Redis to loopback only'
 
-for script in install.sh bin/* lib/*.sh tests/*.sh; do
+for script in install.sh bin/* lib/*.sh scripts/*.sh tests/*.sh; do
     sh -n "$script"
 done
-shellcheck -x install.sh bin/* lib/*.sh tests/*.sh
+shellcheck -x install.sh bin/* lib/*.sh scripts/*.sh tests/*.sh
 
 docker compose -f compose.yaml config >/dev/null
 docker compose -f compose.yaml -f compose.dev.yaml config >/dev/null
