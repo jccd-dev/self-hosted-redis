@@ -5,7 +5,7 @@ if [ "${1:-}" != --inside ]; then
     # A separate daemon keeps production-named resources off the host daemon.
     target="self-hosted-redis-release-test-$$"
     work=$(mktemp -d)
-    # shellcheck disable=SC2329
+    # shellcheck disable=SC2317,SC2329
     cleanup() {
         result=$?
         if [ "$result" -ne 0 ]; then

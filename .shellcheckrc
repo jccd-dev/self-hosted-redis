@@ -1,0 +1,2 @@
+# `[ a ] && [ b ] || fail` is used deliberately as a guard.
+disable=SC2015
