@@ -6,8 +6,9 @@ services:
     command:
       - sh
       - -c
-      # Re-enter the image entrypoint so it still drops Redis to its own user.
-      - exec /usr/local/bin/docker-entrypoint.sh redis-server /usr/local/etc/redis/redis.conf --maxmemory "$$REDIS_MAXMEMORY" --maxmemory-policy "$$REDIS_MAXMEMORY_POLICY"
+      # Give the unprivileged Redis user the ACL it must read and save, then
+      # re-enter the image entrypoint so it still drops Redis to that user.
+      - chown redis /run/redis /run/redis/users.acl && exec /usr/local/bin/docker-entrypoint.sh redis-server /usr/local/etc/redis/redis.conf --maxmemory "$$REDIS_MAXMEMORY" --maxmemory-policy "$$REDIS_MAXMEMORY_POLICY"
     environment:
       REDIS_MAXMEMORY: ${REDIS_MAXMEMORY:-256mb}
       REDIS_MAXMEMORY_POLICY: ${REDIS_MAXMEMORY_POLICY:-noeviction}

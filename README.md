@@ -23,7 +23,7 @@ REDIS_ENV=development ./bin/project-user add example
 REDIS_ENV=development ./bin/check
 ```
 
-Development Redis listens only on `127.0.0.1:6379` and stores data in `self-hosted-redis-dev-data`. It uses the same configurable memory defaults as production.
+Development Redis listens only on `127.0.0.1:6379` and stores data in `self-hosted-redis-dev-data`. It uses the same configurable memory defaults as production. On Linux, Redis takes ownership of `secrets/development` at startup, so run the `bin/` commands with `sudo` there, as in production.
 
 ## Sizing and configuration
 

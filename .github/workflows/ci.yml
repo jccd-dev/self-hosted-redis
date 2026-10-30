@@ -26,7 +26,10 @@ jobs:
           shellcheck --version
           docker compose version
       - name: Test suite
-        run: ./tests/run.sh
+        # Redis takes ownership of the bind-mounted secrets, so operator scripts run as root, as documented.
+        run: |
+          sudo git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          sudo --preserve-env=PATH ./tests/run.sh
       - name: Package release
         run: |
           scripts/package-release.sh "$RUNNER_TEMP/dist"

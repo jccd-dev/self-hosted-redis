@@ -157,8 +157,6 @@ if [ "$update" = 0 ]; then
     docker network inspect shared-services >/dev/null 2>&1 || docker network create shared-services >/dev/null
     "$prefix/bin/init" production
     compose pull redis
-    # Redis runs unprivileged and must be able to read and save the hashed ACL.
-    compose run --rm --no-deps --entrypoint sh redis -c 'chown redis /run/redis /run/redis/users.acl'
     compose up -d --force-recreate --wait redis
     "$prefix/bin/check"
     printf 'Installed %s at %s. Add an application with %s/bin/project-user add <name>.\n' "$release_version" "$prefix" "$prefix"
