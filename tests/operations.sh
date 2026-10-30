@@ -23,7 +23,7 @@ grep -Eq '^user default off$' "$ACL_FILE" || fail 'default user is not disabled'
 grep -Eq '^user admin on #[0-9a-f]{64} ~\* &\* \+@all$' "$ACL_FILE" || fail 'admin ACL is incorrect'
 grep -Eq '^user health on #[0-9a-f]{64} -@all \+ping$' "$ACL_FILE" || fail 'health ACL is incorrect'
 grep -Eq '^user backup on #[0-9a-f]{64} -@all \+ping \+info \+bgsave \+lastsave$' "$ACL_FILE" || fail 'backup ACL is incorrect'
-[ "$(stat -f '%Lp' "$ACL_FILE" 2>/dev/null || stat -c '%a' "$ACL_FILE")" = 600 ] || fail 'users.acl must have mode 600'
+[ "$(stat -c '%a' "$ACL_FILE" 2>/dev/null || stat -f '%Lp' "$ACL_FILE")" = 600 ] || fail 'users.acl must have mode 600'
 
 if REDIS_SECRETS_ROOT="$TMP/secrets" "$ROOT/bin/init" development >/dev/null 2>&1; then
     fail 'init should refuse to overwrite existing secrets'

@@ -66,7 +66,7 @@ R2_ENV="$TMP/secrets/production/backup.env"
 grep -Fxq 'R2_ACCOUNT_ID=0123456789abcdef0123456789abcdef' "$R2_ENV" || fail 'account ID missing'
 grep -Fxq 'R2_BUCKET=redis-backups' "$R2_ENV" || fail 'bucket missing'
 grep -Fxq 'RESTIC_REPOSITORY=s3:https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com/redis-backups' "$R2_ENV" || fail 'Restic R2 URL is incorrect'
-[ "$(stat -f '%Lp' "$R2_ENV" 2>/dev/null || stat -c '%a' "$R2_ENV")" = 600 ] || fail 'backup.env must have mode 600'
+[ "$(stat -c '%a' "$R2_ENV" 2>/dev/null || stat -f '%Lp' "$R2_ENV")" = 600 ] || fail 'backup.env must have mode 600'
 
 # Existing R2 installations remain usable without renaming their configuration.
 mv "$R2_ENV" "$TMP/secrets/production/r2.env"
