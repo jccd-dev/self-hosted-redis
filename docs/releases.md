@@ -1,43 +1,20 @@
 # Release installation and updates
 
-The installer targets Linux with Docker Engine, Docker Compose 2.24.0 or later,
-OpenSSL, curl, GNU tar, and sha256sum. Run installation and updates as root
-(for example, pipe the downloaded installer to `sudo sh`). Root access keeps
-management commands able to read private credentials after ACL ownership is
-assigned to the container’s Redis user. Run the installed operation scripts
-with `sudo` too. It prints advice for memory
-overcommit and Transparent Huge Pages; it does not change host settings.
+For installation, host preparation, connecting applications, and troubleshooting, follow the [getting started guide](getting-started.md). Release downloads use `jccd-dev/self-hosted-redis`.
 
-Release downloads use `jccd-dev/self-hosted-redis`.
-
-```sh
-curl -fsSL https://github.com/jccd-dev/self-hosted-redis/releases/latest/download/install.sh | sudo sh
-```
-
-For a pinned release or host-native clients:
+For a pinned release with host-native access:
 
 ```sh
 curl -fsSL https://github.com/jccd-dev/self-hosted-redis/releases/download/v0.1.0/install.sh |
   sudo sh -s -- --version v0.1.0 --host-access
 ```
 
-The default directory is `/opt/self-hosted-redis`; `--prefix /absolute/path`
-changes it. An existing destination or production data volume is rejected to
-avoid initializing new credentials over an existing deployment. Failed initial
-installs retain their directory and credentials for inspection. Resolve the
-reported problem and complete the documented manual startup; do not delete
-existing secrets or volumes to retry.
-
-Installation creates `.env` from its example, generates production credentials,
-creates the private `shared-services` network if needed, pulls Redis, starts it,
-and runs `bin/check`. It does not enable backups or install a systemd timer.
-`--host-access` records an ignored `.host-access` marker so operation scripts
-and updates keep the supplied loopback override. Manual Docker Compose commands
-still need `-f compose.yaml -f compose.host-access.yaml` when using that marker.
+The default directory is `/opt/self-hosted-redis`; `--prefix /absolute/path` changes it. Existing destinations and production data volumes are rejected. Failed initial installs retain their files for inspection. The installer does not enable backups or install a timer.
 
 ## Update and rollback
 
 ```sh
+sudo -i
 cd /opt/self-hosted-redis
 sudo ./bin/update             # latest published release
 sudo ./bin/update v0.2.0      # pinned release
@@ -62,7 +39,7 @@ volumes. After a successful update, the previous code is retained as
 changes nothing. A failed startup or health check attempts to restore the
 previous code and restart Redis, returning failure even when recovery succeeds;
 the existing rollback target is kept. If recovery fails, the previous code is in
-`.previous.tar.gz.tmp`; check the output and `docker compose logs redis`. An interrupted process can
+`.previous.tar.gz.tmp`; check the output and `sudo docker compose logs redis` (include `-f compose.yaml -f compose.host-access.yaml` after `docker compose` if `.host-access` exists). An interrupted process can
 leave `.update-lock`; verify no updater is running before removing that empty
 directory with `rmdir .update-lock`.
 
@@ -72,7 +49,9 @@ release notes before upgrading; recover incompatible data through a verified
 backup and the documented restore procedure. A code rollback cannot reverse
 writes or a Redis data-format migration. Keep off-server backups for server loss.
 
-## Release asset contract
+## Maintainer information
+
+### Release asset contract
 
 Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`. It runs the test
 suite, builds the assets with `scripts/package-release.sh`, and publishes them
@@ -98,7 +77,7 @@ For offline fixtures or a trusted release mirror, set
 URLs are supported; HTTPS redirects must stay on HTTPS. The paths are
 `latest/download/<asset>` or `download/vX.Y.Z/<asset>`.
 
-## Verification
+### Verification
 
 `tests/releases.sh` exercises the public CLI with local release archives and a
 fake Docker boundary for failure cases. `tests/release-integration.sh` uses a

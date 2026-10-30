@@ -3,7 +3,7 @@
 This project follows [Semantic Versioning](https://semver.org/). Each release
 tag `vX.Y.Z` publishes the matching section below as its release notes.
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-10-30
 
 First public release.
 

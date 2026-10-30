@@ -9,34 +9,9 @@ Each application receives a different Redis ACL user and key prefix. The host ap
 
 ## 1. Install Redis on the VPS
 
-The commands assume this repository is installed at `/opt/self-hosted-redis` and Docker Compose v2 is available.
+Follow the [getting started guide](getting-started.md) and choose the `--host-access` install. Then enter a root shell with `sudo -i` and run `cd /opt/self-hosted-redis`. The host connects to `127.0.0.1:6379`; Docker applications connect through `shared-services` using `REDIS_HOST=redis`. Keep port 6379 closed in the VPS and provider firewalls.
 
-```sh
-cd /opt/self-hosted-redis
-sudo sysctl vm.overcommit_memory=1
-docker network inspect shared-services >/dev/null 2>&1 || docker network create shared-services
-./bin/init production
-```
-
-Run `./bin/init production` only once. It refuses to replace an existing ACL file or passwords.
-
-Because at least one Laravel application runs outside Docker, start Redis with the loopback override:
-
-```sh
-docker compose -f compose.yaml -f compose.host-access.yaml up -d --wait redis
-./bin/check
-```
-
-Always include `compose.host-access.yaml` in future `up` or `config` commands. Starting with only `compose.yaml` removes the host port mapping.
-
-Confirm Redis is bound only to VPS loopback:
-
-```sh
-docker compose -f compose.yaml -f compose.host-access.yaml port redis 6379
-sudo ss -lntp | grep 6379
-```
-
-The reported address must be `127.0.0.1:6379`, never `0.0.0.0:6379`. Do not open port 6379 in UFW, firewalld, the VPS provider firewall, or a cloud security group.
+For manual Compose commands, include `-f compose.yaml -f compose.host-access.yaml` after `docker compose` so the loopback mapping stays in place.
 
 ## 2. Create one Redis user per Laravel application
 
@@ -44,8 +19,8 @@ Create separate users even when both applications belong to the same organizatio
 
 ```sh
 cd /opt/self-hosted-redis
-./bin/project-user add legacy-laravel
-./bin/project-user add docker-laravel
+sudo ./bin/project-user add legacy-laravel
+sudo ./bin/project-user add docker-laravel
 ```
 
 Each command prints connection values once. Save each result in the corresponding application's secret environment file. Do not reuse one application's password or prefix in another application.
@@ -53,8 +28,8 @@ Each command prints connection values once. Save each result in the correspondin
 To rotate or remove credentials later:
 
 ```sh
-./bin/project-user rotate legacy-laravel
-./bin/project-user remove legacy-laravel
+sudo ./bin/project-user rotate legacy-laravel
+sudo ./bin/project-user remove legacy-laravel
 ```
 
 ## 3. Scenario A: Laravel is not Dockerized
@@ -206,45 +181,17 @@ php artisan pulse:restart
 
 Pulse uses Redis as its ingest stream but stores its aggregated durable records in SQL. Queue workers and Horizon must also be restarted after credential or prefix changes.
 
-## 6. Optional: configure Cloudflare R2 backups
+## 6. Backups and maintenance
 
-Redis works without backups or a cloud account. For local storage, S3, B2, or other Restic repositories, use the [backup guide](backups.md). If choosing R2, create a token with Object Read & Write access limited to the dedicated Redis backup bucket. On the VPS:
+See the [backup guide](backups.md) for Cloudflare R2 and other repositories. Use `sudo ./bin/update` for release updates, as described in the [getting started guide](getting-started.md#update-and-rollback).
 
-```sh
-cd /opt/self-hosted-redis
-cp r2.env.example secrets/production/r2-bootstrap.env
-chmod 600 secrets/production/r2-bootstrap.env
-```
-
-Edit that ignored file with the R2 account ID, bucket name, Access Key ID, and Secret Access Key. Load it without printing the values:
+From the Redis installation directory in a root shell, inspect the deployment with:
 
 ```sh
-set -a
-. ./secrets/production/r2-bootstrap.env
-set +a
-./bin/backup-init
-./bin/backup
-```
-
-Initialization writes `secrets/production/backup.env` (or updates a legacy `r2.env`). Remove the bootstrap file and unset exported R2 variables afterward. Keep an off-VPS copy of `secrets/production/restic-password`; backups cannot be decrypted without it. Optionally install the daily systemd timer using the commands in the main [README](../README.md#daily-systemd-timer).
-
-## 7. Deployment and maintenance commands
-
-If backups are configured, run `./bin/backup` before upgrading. Use the host-access override whenever Redis is recreated or upgraded:
-
-```sh
-cd /opt/self-hosted-redis
-docker compose -f compose.yaml -f compose.host-access.yaml pull
-docker compose -f compose.yaml -f compose.host-access.yaml up -d --wait redis
-./bin/check
-```
-
-Useful diagnostics:
-
-```sh
-docker compose -f compose.yaml -f compose.host-access.yaml ps
-docker compose -f compose.yaml -f compose.host-access.yaml logs --tail=200 redis
-docker network inspect shared-services
+sudo docker compose -f compose.yaml -f compose.host-access.yaml ps
+sudo docker compose -f compose.yaml -f compose.host-access.yaml logs --tail=200 redis
+sudo docker network inspect shared-services
+sudo ./bin/check
 ```
 
 ## Troubleshooting

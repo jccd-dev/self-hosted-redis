@@ -2,9 +2,11 @@
 
 Redis runs without a repository, cloud account, or backup timer. Creating a backup configuration opts into the backup commands; scheduling remains a separate step. Without configuration, `bin/backup-init`, `bin/backup`, and `bin/restore` fail before contacting Docker or a provider.
 
+For release installs, enter a root shell with `sudo -i`, then `cd /opt/self-hosted-redis` before running the commands in this guide. If `.host-access` exists, add `-f compose.yaml -f compose.host-access.yaml` immediately after `docker compose` in manual Compose commands.
+
 ## Configuration and passwords
 
-After `./bin/init production`, create `secrets/production/backup.env` with mode `0600`. It is a Compose environment file, not a shell script. Set `RESTIC_REPOSITORY` and the credentials required by your provider. Single-quote values containing literal dollar signs or `#` characters. The file's variables are passed to the Restic container, including provider variables outside AWS.
+After installation, create `secrets/production/backup.env` with mode `0600`. It is a Compose environment file, not a shell script. Set `RESTIC_REPOSITORY` and the credentials required by your provider. Single-quote values containing literal dollar signs or `#` characters. The file's variables are passed to the Restic container, including provider variables outside AWS.
 
 The scripts select `RESTIC_ENV_FILE` when explicitly exported or prefixed on a command. Relative paths are resolved from the repository root. Otherwise they use `secrets/<environment>/backup.env`, falling back to an existing `secrets/<environment>/r2.env`. An explicit missing file fails; it never falls back to a different repository. When both default files exist, `backup.env` wins. Keep separate repositories or repository prefixes for each Redis deployment and environment.
 
@@ -58,7 +60,7 @@ B2_ACCOUNT_KEY='replace-with-application-key'
 
 ## Cloudflare R2
 
-The [README bootstrap recipe](../README.md#cloudflare-r2-recipe) remains available. Alternatively, write `backup.env` directly:
+Write `backup.env` with the bucket-scoped credentials:
 
 ```dotenv
 RESTIC_REPOSITORY=s3:https://ACCOUNT_ID.r2.cloudflarestorage.com/your-bucket
@@ -67,7 +69,7 @@ AWS_SECRET_ACCESS_KEY='replace-with-bucket-scoped-secret-key'
 AWS_DEFAULT_REGION=auto
 ```
 
-The token needs Object Read & Write access to the dedicated bucket. `R2_ACCOUNT_ID` and `R2_BUCKET` are only needed by the optional bootstrap recipe, not by generic backup commands.
+The token needs Object Read & Write access to the dedicated bucket. `R2_ACCOUNT_ID` and `R2_BUCKET` are not needed by generic backup commands.
 
 ## Restore and scheduling
 

@@ -6,29 +6,13 @@ This deployment has no replica or automatic failover. A VPS outage is a Redis ou
 
 ## Quickstart
 
-On a Linux VPS with Docker Engine and Docker Compose 2.24.0 or later:
+Install Docker Engine and Compose 2.24.0 or later, prepare the VPS, and choose how applications will connect. Follow the [getting started guide](docs/getting-started.md) for commands, including `vm.overcommit_memory` and Transparent Huge Pages settings. The default release install is:
 
 ```sh
 curl -fsSL https://github.com/jccd-dev/self-hosted-redis/releases/latest/download/install.sh | sudo sh
-sudo /opt/self-hosted-redis/bin/project-user add my-app
 ```
 
-The installer verifies the release checksum, installs to `/opt/self-hosted-redis`, generates credentials, and starts Redis on the private `shared-services` network. `project-user add` prints that application's connection settings once. Add `-s -- --host-access` after `sudo sh` for applications running directly on the host. Update later with `sudo /opt/self-hosted-redis/bin/update`. See [the release guide](docs/releases.md) before installing.
-
-## Requirements
-
-- Linux VPS with Docker Engine, Docker Compose 2.24.0 or later, and systemd for the optional backup timer
-- 1 GB RAM starting target with a 256 MiB dataset limit; size for the other applications sharing the VPS
-- OpenSSL on the host for credential generation
-- No cloud account is needed to run Redis; backups are optional
-
-On the VPS, enable Redis's required memory-overcommit setting and persist it using your distribution's sysctl configuration:
-
-```sh
-sudo sysctl vm.overcommit_memory=1
-```
-
-Disable Transparent Huge Pages using the distribution's supported boot or systemd mechanism. Keep TCP port `6379` closed in the VPS firewall; production Compose does not publish it.
+The installer uses `/opt/self-hosted-redis`. For host-native applications, follow the guide's `--host-access` instructions.
 
 ## Local development
 
@@ -43,10 +27,12 @@ Development Redis listens only on `127.0.0.1:6379` and stores data in `self-host
 
 ## Sizing and configuration
 
-Defaults work without an operator file. To customize them, copy `.env.example` to the ignored `.env` in the repository root:
+Defaults work without an operator file. For a release install, enter a root shell and edit the existing ignored `.env`. If `.host-access` exists, add `-f compose.yaml -f compose.host-access.yaml` immediately after `docker compose` in all manual Compose commands in this README:
 
 ```sh
-cp .env.example .env
+sudo -i
+cd /opt/self-hosted-redis
+sudo nano .env
 ```
 
 Edit `REDIS_MAXMEMORY` (dataset limit), `REDIS_MEM_LIMIT` (total container memory), and `REDIS_MAXMEMORY_POLICY` (eviction policy). Redis accepts bytes or integer `k`, `kb`, `m`, `mb`, `g`, `gb` sizes; `mb` and `gb` use powers of 1024. Docker container limits use units such as `512m` or `1g`. Keep the dataset limit below the container limit. Shell environment variables override `.env` values, following [Compose interpolation rules](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/).
@@ -61,7 +47,7 @@ Suggested starting points, subject to workload testing:
 
 The container also needs memory for clients, allocator overhead, and copy-on-write during RDB saves and AOF rewrites. These limits are starting budgets, not guaranteed capacity. Leave RAM for the OS, backups, and applications. Monitor actual usage, especially during write-heavy saves; a container reaching its memory limit can be killed even before Redis reaches its dataset limit. The 1 GB target has not been soak-tested on a real VPS.
 
-Apply changes with `docker compose up -d redis`, then run `./bin/check`. For development, include `-f compose.yaml -f compose.dev.yaml` and use `REDIS_ENV=development ./bin/check`. The check compares live Redis settings with its deployed container configuration; editing `.env` alone does not update a running container.
+Apply changes with `sudo docker compose up -d redis`, then run `sudo ./bin/check` from `/opt/self-hosted-redis` in the root shell. For development, include `-f compose.yaml -f compose.dev.yaml` and use `REDIS_ENV=development ./bin/check`. The check compares live Redis settings with its deployed container configuration; editing `.env` alone does not update a running container.
 
 **Existing deployments:** before recreating Redis, set `.env` to your current limits. The previous defaults were `REDIS_MAXMEMORY=2gb` and `REDIS_MEM_LIMIT=2560m`. Without explicit values, recreation applies the new `256mb` / `512m` defaults. Take a backup and inspect current usage before reducing limits; `noeviction` rejects writes when full, while eviction policies can delete keys.
 
@@ -69,17 +55,20 @@ Production host access remains opt-in: include `-f compose.yaml -f compose.host-
 
 ## Production deployment
 
-For release installation, updates, and rollback, see [the release guide](docs/releases.md).
+For release installation, updates, and rollback, see the [getting started guide](docs/getting-started.md).
+
+### Advanced: manual Git checkout
 
 For the manual Compose path, install the repository at `/opt/self-hosted-redis`, then initialize the private Docker network and credentials:
 
 ```sh
+sudo -i
 cd /opt/self-hosted-redis
-docker network create shared-services
-./bin/init production
-docker compose up -d redis
-./bin/check
-./bin/project-user add example
+sudo docker network create shared-services
+sudo ./bin/init production
+sudo docker compose up -d redis
+sudo ./bin/check
+sudo ./bin/project-user add example
 ```
 
 Run `docker network create` only once. Other Compose projects connect to Redis by joining `shared-services` and using hostname `redis`. See the recipes in [docs/client-recipes](docs/client-recipes/docker.md).
@@ -87,9 +76,9 @@ Run `docker network create` only once. Other Compose projects connect to Redis b
 `project-user add` and `project-user rotate` print the password once. Copy the result directly into that project's secret manager. Redis stores only the password hash in `secrets/production/users.acl`.
 
 ```sh
-./bin/project-user add project-name
-./bin/project-user rotate project-name
-./bin/project-user remove project-name
+sudo ./bin/project-user add project-name
+sudo ./bin/project-user rotate project-name
+sudo ./bin/project-user remove project-name
 ```
 
 Valid project slugs are lowercase, start with a letter, contain only letters, digits, and hyphens, and are at most 32 characters. Every client must use the emitted `<slug>:` prefix for keys and Pub/Sub channels.
@@ -98,49 +87,20 @@ Project users cannot read or write other projects' keys or channels, or manage s
 
 ## Optional backups
 
-Backups are off by default: no repository is configured and no timer is installed or enabled automatically. Redis initialization and startup need no cloud credentials. To opt in, create a mode-`0600` `secrets/production/backup.env` with a Restic repository and its provider credentials, then run `./bin/backup-init`. Backup commands fail with an explanation when configuration is missing; they do not contact Docker or a storage provider.
-
-For a local repository with no cloud account:
+Backups are off by default. In a root shell, from `/opt/self-hosted-redis`, configure a local repository with:
 
 ```sh
-cp backup.env.example secrets/production/backup.env
-chmod 600 secrets/production/backup.env
-./bin/backup-init
-./bin/backup
+sudo cp backup.env.example secrets/production/backup.env
+sudo chmod 600 secrets/production/backup.env
+sudo ./bin/backup-init
+sudo ./bin/backup
 ```
 
-The example stores encrypted backups in the persistent `self-hosted-redis-local-restic` Docker volume at `/local-backup/repository` inside the tool container. Local backups share the server's failure risk. See [backup configuration and provider recipes](docs/backups.md) for S3, B2, R2, development use, and existing repositories. Keep a secure copy of `secrets/production/restic-password` outside the VPS; losing it prevents recovery.
-
-### Cloudflare R2 recipe
-
-In Cloudflare, create an R2 S3 API token with **Object Read & Write** access limited to the dedicated Redis backup bucket. Do not use an account-wide token.
-
-Create a temporary mode-`0600` bootstrap file from `r2.env.example`, fill in the account ID, bucket, Access Key ID, and Secret Access Key, then initialize Restic:
-
-```sh
-cp r2.env.example secrets/production/r2-bootstrap.env
-chmod 600 secrets/production/r2-bootstrap.env
-set -a
-. ./secrets/production/r2-bootstrap.env
-set +a
-./bin/backup-init
-```
-
-After successful initialization, remove `r2-bootstrap.env` and unset the exported R2 variables. The command writes the required values to ignored `secrets/production/backup.env`; it never prints credentials. Existing `r2.env` configurations remain supported when `backup.env` is absent, and are updated in place when using this bootstrap recipe.
-
-Run and inspect a manual backup:
-
-```sh
-./bin/backup
-RESTIC_ENV_FILE=secrets/production/backup.env docker compose --profile tools run --rm restic snapshots
-RESTIC_ENV_FILE=secrets/production/backup.env docker compose --profile tools run --rm restic check
-```
-
-Backups request a fresh RDB snapshot before uploading. Restic encrypts the snapshot and retains 7 daily, 4 weekly, and 6 monthly versions.
+The local `self-hosted-redis-local-restic` volume shares the server's failure risk. Keep a secure copy of `secrets/production/restic-password` outside the VPS; losing it prevents recovery. For an off-server repository, see the [backup guide](docs/backups.md). A Cloudflare R2 token needs Object Read & Write access limited to the dedicated bucket.
 
 ### Daily systemd timer
 
-After configuring and testing a backup repository, optionally enable the supplied timer. It expects the repository at `/opt/self-hosted-redis`:
+After configuring and testing a backup repository, optionally enable the supplied timer. From a root shell in `/opt/self-hosted-redis`:
 
 ```sh
 sudo cp systemd/self-hosted-redis-backup.service /etc/systemd/system/
@@ -155,13 +115,13 @@ The timer runs daily with up to one hour of randomized delay and catches up afte
 
 ## Restore drill
 
-List snapshots and stop Redis before restoring:
+From a root shell in `/opt/self-hosted-redis`, list snapshots and stop Redis before restoring:
 
 ```sh
-RESTIC_ENV_FILE=secrets/production/backup.env docker compose --profile tools run --rm restic snapshots
-docker compose stop redis
-./bin/restore <snapshot-id> --confirm
-./bin/check
+sudo env RESTIC_ENV_FILE=secrets/production/backup.env docker compose --profile tools run --rm restic snapshots
+sudo docker compose stop redis
+sudo ./bin/restore <snapshot-id> --confirm
+sudo ./bin/check
 ```
 
 Restore downloads only `dump.rdb` into a staging volume, validates it with `redis-check-rdb`, and copies the current Redis volume into a timestamped safety directory in staging. It loads the restored RDB in a temporary Redis container with AOF disabled, enables AOF, and waits for a successful rewrite before restarting the existing service with its deployed port mappings and settings. Keep the safety copy until application checks pass; later restores preserve earlier safety directories. A restore intentionally discards the old AOF after preserving it because Redis would otherwise replay newer data over the restored RDB.
@@ -170,11 +130,13 @@ Perform this drill after initial deployment and periodically thereafter. A backu
 
 ## Operations
 
-- Check service state: `./bin/check`
-- Inspect memory: `docker compose exec redis redis-cli --user admin --askpass INFO memory`
-- Inspect persistence: `docker compose exec redis redis-cli --user admin --askpass INFO persistence`
-- View logs: `docker compose logs --tail=200 redis`
-- Upgrade release installs: `./bin/update [vX.Y.Z]`; see [updates and rollback](docs/releases.md)
+Enter a root shell with `sudo -i`, then `cd /opt/self-hosted-redis`. If `.host-access` exists, add `-f compose.yaml -f compose.host-access.yaml` immediately after `docker compose` in every manual Compose command below and in the sizing, backup, and restore commands above. Project scripts select the override automatically.
+
+- Check service state: `sudo ./bin/check`
+- Inspect memory: `sudo docker compose exec redis redis-cli --user admin --askpass INFO memory`
+- Inspect persistence: `sudo docker compose exec redis redis-cli --user admin --askpass INFO persistence`
+- View logs: `sudo docker compose logs --tail=200 redis`
+- Upgrade release installs: `sudo ./bin/update [vX.Y.Z]`; see [updates and rollback](docs/releases.md)
 
 The default `noeviction` policy protects queues, sessions, streams, and other non-disposable data from silent deletion. When the configured dataset limit is reached, writes fail. Alert before `used_memory` approaches the limit and scale or separate workloads rather than changing to an eviction policy blindly.
 

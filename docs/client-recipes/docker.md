@@ -31,8 +31,8 @@ networks:
 
 The application must prefix every Redis key and Pub/Sub channel with `REDIS_PREFIX`. ACL enforcement rejects unprefixed and cross-project access. Lua scripts must receive fully prefixed keys through `KEYS`; they must not construct undeclared keys internally.
 
-For a direct check from the Redis project directory:
+For a direct check from a root shell in `/opt/self-hosted-redis`, add `-f compose.yaml -f compose.host-access.yaml` after `docker compose` if `.host-access` exists:
 
 ```sh
-docker compose exec redis redis-cli --user example --askpass SET example:health ok EX 30
+sudo docker compose exec redis redis-cli --user example --askpass SET example:health ok EX 30
 ```
